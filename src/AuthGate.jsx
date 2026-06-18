@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { COLORS, TYPE, SPACE, RADIUS, ensureFonts } from "./theme";
+import { COLORS, TYPE, RADIUS, ensureFonts } from "./theme";
 import { isMockMode } from "./lib/supabase.js";
-import { getSession, onAuthChange, signInWithMagicLink, ensureBootstrap } from "./lib/auth.js";
+import { getSession, onAuthChange, signUp, signInWithPassword, setRemember, ensureBootstrap } from "./lib/auth.js";
 import TwoDoShell from "./TwoDoShell.jsx";
 
 ensureFonts();
@@ -52,47 +52,48 @@ function RealAuthGate() {
 }
 
 function SignIn() {
+  const [mode, setMode] = useState("signin"); // "signin" | "signup"
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [remember, setRem] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
 
   async function submit() {
     const e = email.trim();
-    if (!e || busy) return;
-    setBusy(true); setError(null);
-    const { error } = await signInWithMagicLink(e);
+    if (!e || !password || busy) return;
+    setBusy(true); setError(null); setInfo(null);
+    setRemember(remember);
+    const { data, error } = mode === "signup" ? await signUp(e, password) : await signInWithPassword(e, password);
     setBusy(false);
-    if (error) setError(error.message);
-    else setSent(true);
+    if (error) { setError(error.message); return; }
+    if (mode === "signup" && data && !data.session) {
+      setInfo("Account created — confirm via the email we sent, then sign in.");
+      setMode("signin");
+    }
+    // On success with a session, onAuthChange advances the gate automatically.
   }
-
-  if (sent) return (
-    <Centered>
-      <p style={{ ...TYPE.body, color: COLORS.textPrimary }}>Check your email.</p>
-      <p style={muted}>We sent a sign-in link to <b style={{ color: COLORS.textSecondary }}>{email}</b>. Open it on this device.</p>
-    </Centered>
-  );
 
   return (
     <Centered>
-      <p style={{ ...muted, marginBottom: 18 }}>Sign in to sync with your partner.</p>
-      <input
-        type="email" value={email} autoFocus
-        onChange={(e) => setEmail(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && submit()}
-        placeholder="you@example.com"
-        style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: RADIUS.md, border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, color: COLORS.textPrimary, fontFamily: "'DM Sans', sans-serif", fontSize: 15, outline: "none", caretColor: COLORS.accent, marginBottom: 10 }}
-      />
-      <button
-        onClick={submit} disabled={busy} className="pressable focusable"
-        style={{ width: "100%", padding: "12px", borderRadius: RADIUS.md, border: "none", background: COLORS.accent, color: COLORS.bg, fontFamily: "'DM Sans', sans-serif", fontSize: 15, fontWeight: 600, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}
-      >
-        {busy ? "Sending…" : "Email me a link"}
+      <p style={{ ...muted, marginBottom: 18 }}>{mode === "signup" ? "Create an account to sync with your partner." : "Sign in to sync with your partner."}</p>
+      <input type="email" value={email} autoFocus autoComplete="email" onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={field} />
+      <input type="password" value={password} autoComplete={mode === "signup" ? "new-password" : "current-password"} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Password" style={field} />
+      <label style={{ display: "flex", alignItems: "center", gap: 8, ...TYPE.meta, color: COLORS.textSecondary, margin: "2px 0 14px", cursor: "pointer" }}>
+        <input type="checkbox" checked={remember} onChange={(e) => setRem(e.target.checked)} style={{ accentColor: COLORS.accent }} /> Keep me signed in
+      </label>
+      <button onClick={submit} disabled={busy} className="pressable focusable" style={{ width: "100%", padding: "12px", borderRadius: RADIUS.md, border: "none", background: COLORS.accent, color: COLORS.bg, fontFamily: "'DM Sans', sans-serif", fontSize: 15, fontWeight: 600, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
+        {busy ? "…" : mode === "signup" ? "Create account" : "Sign in"}
       </button>
       {error && <p style={{ ...muted, color: COLORS.accent, marginTop: 10 }}>{error}</p>}
+      {info && <p style={{ ...muted, marginTop: 10 }}>{info}</p>}
+      <button onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(null); setInfo(null); }} className="focusable" style={{ background: "none", border: "none", color: COLORS.textSecondary, cursor: "pointer", marginTop: 16, fontFamily: "'DM Sans', sans-serif", fontSize: 13, textDecoration: "underline" }}>
+        {mode === "signup" ? "Have an account? Sign in" : "Need an account? Sign up"}
+      </button>
     </Centered>
   );
 }
 
+const field = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: RADIUS.md, border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, color: COLORS.textPrimary, fontFamily: "'DM Sans', sans-serif", fontSize: 15, outline: "none", caretColor: COLORS.accent, marginBottom: 10 };
 const muted = { ...TYPE.body, fontFamily: "'Fraunces', serif", fontStyle: "italic", color: COLORS.textMuted };

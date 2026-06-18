@@ -30,6 +30,8 @@ export default defineConfig({
     })
   ],
   test: {
-    environment: "node"
+    environment: "node",
+    // Force MOCK mode in unit tests even when .env.local has real Supabase creds.
+    env: { VITE_SUPABASE_URL: "", VITE_SUPABASE_ANON_KEY: "" }
   }
 });

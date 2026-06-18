@@ -25,10 +25,10 @@ Without Supabase credentials the app boots in **mock mode** — in-memory data, 
 1. Create a Supabase project.
 2. Run [`supabase/schema.sql`](supabase/schema.sql) in the SQL editor (tables + RLS + the `bootstrap_space` onboarding function).
 3. Enable **Realtime** on the tables you subscribe to (`item`, `board_column`, `list`, `store`, `savings_goal`, `bill`, …) — Database → Replication, or `alter publication supabase_realtime add table item, board_column, list, store;`.
-4. **Auth**: email is on by default; magic-link is used. (Optional: set the Site URL / redirect URLs in Auth settings to your dev origin, e.g. `http://localhost:5173`.)
+4. **Auth**: email + password. For a friction-free dev setup, turn **off** Authentication → Providers → Email → **Confirm email** so sign-up is instant (no confirmation email, no rate limits). Leave it on if you want email verification.
 5. Copy `.env.example` → `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then restart `npm run dev`.
 
-With those set, the app leaves mock mode and shows a **magic-link sign-in**. On first sign-in it auto-creates your space + two people (you as one partner, a placeholder for the other you can rename) via the `bootstrap_space` RPC — no manual seeding needed. Sign out from the **⎋** button in the header.
+With those set, the app leaves mock mode and shows an **email + password sign-in** (with sign-up and a "keep me signed in" toggle — on = session persists across restarts, off = clears when the browser closes). On first sign-in it auto-creates your space + two people (you as one partner, a placeholder for the other you can rename) via the `bootstrap_space` RPC — no manual seeding needed. Sign out from the **⎋** button in the header.
 
 ## Enable real AI parsing (The Grown-Up)
 

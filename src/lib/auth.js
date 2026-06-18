@@ -1,5 +1,17 @@
 // Auth + first-run bootstrap. No-ops in mock mode (the app runs auth-less there).
-import { supabase, isMockMode } from "./supabase.js";
+import { supabase, isMockMode, setRemember } from "./supabase.js";
+
+export { setRemember };
+
+export async function signUp(email, password) {
+  if (isMockMode) return { data: null, error: null };
+  return supabase.auth.signUp({ email, password });
+}
+
+export async function signInWithPassword(email, password) {
+  if (isMockMode) return { data: null, error: null };
+  return supabase.auth.signInWithPassword({ email, password });
+}
 
 export async function getSession() {
   if (isMockMode) return null;
