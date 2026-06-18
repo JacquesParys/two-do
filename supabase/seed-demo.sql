@@ -5,13 +5,21 @@
 -- want a clean slate).
 do $$
 declare
+  v_email text := 'jacques.parys@gmail.com';  -- 👈 set this to the email you sign in with
   s uuid; pa uuid; pb uuid;
   c_someday uuid; c_soon uuid; c_today uuid; c_done uuid;
   l_groc uuid; l_house uuid;
   st_metro uuid; st_hd uuid;
   i_japan uuid; g uuid;
 begin
-  select id into s from space order by created_at limit 1;
+  -- Target the space of YOUR signed-in account (avoids landing in an orphaned space).
+  select p.space_id into s
+    from person p join auth.users u on u.id = p.auth_user_id
+    where lower(u.email) = lower(v_email)
+    limit 1;
+  if s is null then
+    raise exception 'No space found for %. Sign in once in the app first, or fix v_email.', v_email;
+  end if;
   select id into pa from person where space_id = s and slot = 'partner_a';
   select id into pb from person where space_id = s and slot = 'partner_b';
   select id into c_someday from board_column where space_id = s and label = 'Someday';
