@@ -20,7 +20,8 @@ const STYLES = {
  * @param {object} space      { label_style, custom_labels }
  * @returns {string}
  */
-export function laneLabel(laneSlot, viewerSlot, space = {}) {
+export function laneLabel(laneSlot, viewerSlot, space) {
+  space = space || {};
   const style = space.label_style || "me_you_us";
 
   if (style === "custom") {
@@ -41,7 +42,8 @@ export function laneLabel(laneSlot, viewerSlot, space = {}) {
  * @param {object} people  { partner_a: {lane_color}, partner_b: {lane_color} }
  * @param {object} colors  theme COLORS (for the neutral Us tone)
  */
-export function laneColor(laneSlot, people = {}, colors = {}) {
+export function laneColor(laneSlot, people, colors = {}) {
+  people = people || {};
   if (laneSlot === SLOTS.SHARED) return colors.laneUs;
   const p = laneSlot === SLOTS.A ? people.partner_a : people.partner_b;
   return (p && p.lane_color) || colors.laneUs;

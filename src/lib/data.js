@@ -177,11 +177,17 @@ export async function getBootstrap() {
   }
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth?.user?.id;
+  // maybeSingle() → null (not a 406) when the user has no space yet.
+  let { data: space } = await supabase.from("space").select("*").maybeSingle();
+  if (!space) {
+    // Self-heal: create the space + people for this user (idempotent), then refetch.
+    await supabase.rpc("bootstrap_space", { p_display_name: auth?.user?.email?.split("@")[0] ?? null });
+    ({ data: space } = await supabase.from("space").select("*").maybeSingle());
+  }
   const { data: people } = await supabase.from("person").select("*");
-  const { data: space } = await supabase.from("space").select("*").single();
   const bySlot = Object.fromEntries((people || []).map((p) => [p.slot, p]));
   const viewer = (people || []).find((p) => p.auth_user_id === uid);
-  return { space, people: bySlot, viewerSlot: viewer?.slot || SLOTS.A };
+  return { space: space || {}, people: bySlot, viewerSlot: viewer?.slot || SLOTS.A };
 }
 
 export async function listColumns() {

@@ -18,10 +18,9 @@ export default defineConfig({
         theme_color: "#1B2B2B",
         background_color: "#1B2B2B",
         display: "standalone",
-        icons: [
-          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "icon-512.png", sizes: "512x512", type: "image/png" }
-        ]
+        // No icon assets yet — leave empty to avoid 404s in the console. Add real
+        // icons to public/ and reference them here for installable-PWA branding.
+        icons: []
       },
       workbox: {
         // Empty runtime caching for now; the push handler lands in Phase 2.
