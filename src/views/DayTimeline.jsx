@@ -64,6 +64,7 @@ function packColumns(blocks) {
 export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenItem, onChange }) {
   const scrollRef = useRef(null);
   const dragRef = useRef(null);
+  const holdRef = useRef(null); // pending press-and-hold (touch) before a drag commits
   const propsRef = useRef({});
   propsRef.current = { day, onChange, onOpenItem };
 
@@ -83,6 +84,17 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
   // commit happens outside any state updater).
   useEffect(() => {
     const onMove = (e) => {
+      // Pending press-and-hold: if the finger travels before the timer fires,
+      // it's a scroll/swipe — abandon the would-be drag and let the page scroll.
+      const h = holdRef.current;
+      if (h) {
+        h.lastY = e.clientY;
+        if (Math.abs(e.clientY - h.y) > 8 || Math.abs(e.clientX - h.x) > 8) {
+          clearTimeout(h.timer);
+          holdRef.current = null;
+        }
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       if (d.it._recurring) return; // recurring occurrences are tap-only
@@ -103,7 +115,16 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
       dragRef.current = next;
       setDrag(next);
     };
-    const end = () => {
+    const end = (e) => {
+      // Hold released before the timer fired (and finger barely moved) → it's a tap.
+      const h = holdRef.current;
+      if (h) {
+        clearTimeout(h.timer);
+        holdRef.current = null;
+        const y = e && typeof e.clientY === "number" ? e.clientY : h.lastY;
+        if (Math.abs(y - h.y) <= 8) propsRef.current.onOpenItem?.(h.it);
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
@@ -124,22 +145,56 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
         change?.(d.it.id, { due_at: atMinutes(cur, d.topMin).toISOString() });
       }
     };
+    // pointercancel fires when the browser takes over the gesture (e.g. a scroll
+    // wins): drop a pending hold silently; commit an in-flight drag like pointerup.
+    const cancel = () => {
+      const h = holdRef.current;
+      if (h) { clearTimeout(h.timer); holdRef.current = null; return; }
+      end();
+    };
+    // Non-passive: once a touch drag is actually active, stop the page from scrolling.
+    const onTouchMove = (e) => {
+      if (dragRef.current && !dragRef.current.it._recurring && e.cancelable) e.preventDefault();
+    };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("touchmove", onTouchMove);
     };
   }, []);
 
-  function startDrag(e, it, mode, startMin, durMin) {
-    e.stopPropagation();
-    e.preventDefault();
-    const d = { it, mode, startY: e.clientY, origTopMin: startMin, origDurMin: durMin, topMin: startMin, durMin, moved: false };
+  function beginDrag(it, mode, startMin, durMin, startY) {
+    const d = { it, mode, startY, origTopMin: startMin, origDurMin: durMin, topMin: startMin, durMin, moved: false };
     dragRef.current = d;
     setDrag(d);
+  }
+
+  // Mouse drags immediately; touch/pen requires a deliberate press-and-hold so a
+  // quick swipe scrolls the timeline instead of grabbing an event.
+  function onBlockPointerDown(e, it, mode, startMin, durMin) {
+    if (it._recurring) return; // recurring occurrences are tap-only (handled via onClick)
+    e.stopPropagation();
+    if (e.pointerType === "mouse") {
+      e.preventDefault();
+      beginDrag(it, mode, startMin, durMin, e.clientY);
+      return;
+    }
+    const el = e.currentTarget;
+    const pointerId = e.pointerId;
+    const timer = setTimeout(() => {
+      const h = holdRef.current;
+      if (!h) return;
+      holdRef.current = null;
+      try { el.setPointerCapture(pointerId); } catch { /* capture is best-effort */ }
+      if (navigator.vibrate) navigator.vibrate(8);
+      beginDrag(it, mode, startMin, durMin, h.lastY);
+    }, 220);
+    holdRef.current = { it, x: e.clientX, y: e.clientY, lastY: e.clientY, timer };
   }
 
   const packed = packColumns(toBlocks(items || []));
@@ -203,7 +258,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
               <div key={b.it.id} style={{ position: "absolute", top: topMin * pxPerMin, height: hPx, left: `${b.col * w}%`, width: `${w}%`, padding: "0 2px", boxSizing: "border-box", zIndex: dragging ? 7 : 2 }}>
                 <div
                   className="motion"
-                  onPointerDown={(e) => startDrag(e, b.it, "move", b.startMin, b.durMin)}
+                  onPointerDown={(e) => onBlockPointerDown(e, b.it, "move", b.startMin, b.durMin)}
+                  onClick={b.it._recurring ? () => propsRef.current.onOpenItem?.(b.it) : undefined}
                   style={{
                     position: "relative", height: "100%", width: "100%", boxSizing: "border-box",
                     borderRadius: RADIUS.lg,
@@ -211,7 +267,7 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                     boxShadow: exciting ? glow(nodeCol) : SHADOW.md,
                     border: exciting ? `1px solid ${withAlpha(nodeCol, 0.45)}` : "1px solid transparent",
                     overflow: "hidden", padding: `4px ${SPACE[2]}px`,
-                    cursor: dragging ? "grabbing" : "grab", touchAction: "none", opacity: dragging ? 0.94 : 1,
+                    cursor: dragging ? "grabbing" : "grab", touchAction: d ? "none" : "pan-y", opacity: dragging ? 0.94 : 1,
                   }}
                 >
                   <LaneFill color={nodeCol} proximity={timeProximity(b.it)} completion={completion} />
@@ -223,9 +279,9 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                   {!b.it._recurring && (
                     <>
                       {/* Resize from the top edge — integrated faded sheen */}
-                      <div onPointerDown={(e) => startDrag(e, b.it, "resizeTop", b.startMin, b.durMin)} style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, cursor: "ns-resize", touchAction: "none" }}>{sheen("top", nodeCol, !!d && d.mode === "resizeTop")}</div>
+                      <div onPointerDown={(e) => onBlockPointerDown(e, b.it, "resizeTop", b.startMin, b.durMin)} style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, cursor: "ns-resize", touchAction: "none" }}>{sheen("top", nodeCol, !!d && d.mode === "resizeTop")}</div>
                       {/* Resize from the bottom edge */}
-                      <div onPointerDown={(e) => startDrag(e, b.it, "resizeBottom", b.startMin, b.durMin)} style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 8, cursor: "ns-resize", touchAction: "none" }}>{sheen("bottom", nodeCol, !!d && d.mode === "resizeBottom")}</div>
+                      <div onPointerDown={(e) => onBlockPointerDown(e, b.it, "resizeBottom", b.startMin, b.durMin)} style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 8, cursor: "ns-resize", touchAction: "none" }}>{sheen("bottom", nodeCol, !!d && d.mode === "resizeBottom")}</div>
                     </>
                   )}
                 </div>

@@ -145,8 +145,8 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           <button onClick={save} style={{ ...iconBtn, color: COLORS.accent, fontWeight: 600 }}>Save</button>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 18px 28px" }}>
-          <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" autoFocus style={{ ...input, fontSize: 18, fontWeight: 500 }} />
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 22px" }}>
+          <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" style={{ ...input, fontSize: 16, fontWeight: 600 }} />
 
           <Label>Type</Label>
           <Segmented
@@ -154,17 +154,6 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             value={form.type}
             onChange={(v) => set("type", v)}
           />
-
-          <Label>Lane</Label>
-          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} />
-
-          <Label>Color</Label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <button onClick={() => set("color", null)} className="focusable" title="Auto (lane color)" style={{ ...swatch, width: "auto", height: 30, padding: "0 12px", borderRadius: 15, background: COLORS.surface, color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 500, border: !form.color ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}` }}>Auto</button>
-            {SWATCHES.map((c) => (
-              <button key={c} onClick={() => set("color", c)} className="focusable" title={c} style={{ ...swatch, background: c, border: "none", outline: form.color === c ? `2px solid ${COLORS.textPrimary}` : "none", outlineOffset: 2 }} />
-            ))}
-          </div>
 
           {form.type === "shopping" && (
             <>
@@ -212,6 +201,9 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
               <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} />
             </>
           )}
+
+          <Label>Lane</Label>
+          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} />
 
           {(form.type === "task" || form.type === "event") && (
             <>
@@ -279,6 +271,14 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             <Row><Toggle label="Keep reminding me" on={!!form.persistent_until_done} onClick={() => set("persistent_until_done", !form.persistent_until_done)} /></Row>
           )}
 
+          <Label>Color</Label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <button onClick={() => set("color", null)} className="focusable" title="Auto (lane color)" style={{ height: 22, padding: "0 10px", borderRadius: 11, background: COLORS.surface, color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 500, cursor: "pointer", border: !form.color ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}` }}>Auto</button>
+            {SWATCHES.map((c) => (
+              <button key={c} onClick={() => set("color", c)} className="focusable" title={c} style={{ width: 22, height: 22, borderRadius: 11, padding: 0, background: c, border: "none", cursor: "pointer", outline: form.color === c ? `2px solid ${COLORS.textPrimary}` : "none", outlineOffset: 2 }} />
+            ))}
+          </div>
+
           {!isNew && <button onClick={remove} style={deleteBtn}>Delete</button>}
         </div>
       </div>
@@ -304,9 +304,9 @@ function LinkedAdd({ listId, lane, spaceId, createdBy, onAdded }) {
 }
 
 function Label({ children }) {
-  return <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textSecondary, margin: "18px 0 8px" }}>{children}</div>;
+  return <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textSecondary, margin: "12px 0 6px" }}>{children}</div>;
 }
-function Row({ children }) { return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>{children}</div>; }
+function Row({ children }) { return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>{children}</div>; }
 function Segmented({ options, value, onChange }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -350,8 +350,8 @@ function StorePicker({ stores, value, onChange, onAdd }) {
 }
 const chip = (on) => ({ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: on ? COLORS.accent : COLORS.surface, color: on ? COLORS.bg : COLORS.textSecondary });
 
-const input = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: COLORS.textPrimary, outline: "none", caretColor: COLORS.accent, marginBottom: 4 };
+const input = { width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, fontFamily: "'DM Sans', sans-serif", fontSize: 16, color: COLORS.textPrimary, outline: "none", caretColor: COLORS.accent, marginBottom: 4 };
 const iconBtn = { background: "none", border: "none", color: COLORS.textPrimary, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" };
-const deleteBtn = { marginTop: 28, width: "100%", padding: "12px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: "transparent", color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13, cursor: "pointer" };
+const deleteBtn = { marginTop: 18, width: "100%", padding: "11px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: "transparent", color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13, cursor: "pointer" };
 const pickerNav = { width: 26, height: 26, borderRadius: 13, border: "none", background: COLORS.surfaceLight, color: COLORS.textPrimary, cursor: "pointer", fontSize: 14 };
 const pickerLink = { background: "none", border: "none", color: COLORS.accent, fontFamily: "'DM Sans', sans-serif", fontSize: 12, cursor: "pointer" };

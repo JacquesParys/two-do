@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor,
   useSensor, useSensors, useDroppable, closestCorners,
@@ -156,9 +156,11 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
     return () => { u1(); u2(); };
   }, []);
 
+  const colRefs = useRef({});
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+    // Deliberate press-and-hold on touch so a quick swipe scrolls instead of dragging.
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
 
   const findContainer = (id) => (id in containers ? id : Object.keys(containers).find((k) => containers[k].includes(id)));
@@ -243,28 +245,37 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
         </div>
       );
     } else {
-      const col = columns[activeCol];
-      const ids = vis((col && containers[col.id]) || []);
-      board = (
+      board = dnd(
         <>
-          <div className="no-sb" style={{ display: "flex", gap: SPACE[2], marginBottom: SPACE[4], overflowX: "auto", ...fadeX }}>
+          {/* Quick-jump chips scroll the matching column into view. */}
+          <div className="no-sb" style={{ display: "flex", gap: SPACE[2], marginBottom: SPACE[3], overflowX: "auto", ...fadeX }}>
             {columns.map((c, i) => (
-              <Chip key={c.id} active={i === activeCol} variant="soft" onClick={() => setActiveCol(i)}>
+              <Chip key={c.id} active={i === activeCol} variant="soft" onClick={() => { setActiveCol(i); colRefs.current[c.id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" }); }}>
                 {c.label} <span style={{ opacity: 0.5 }}>{vis(containers[c.id] || []).length}</span>
               </Chip>
             ))}
           </div>
-          {dnd(
-            <Column id={col?.id || "none"} empty={ids.length === 0}>
-              <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                {ids.length ? ids.map(renderCard) : <EmptyState>{emptyLine(col?.role)}</EmptyState>}
-              </SortableContext>
-            </Column>
-          )}
-          {col && <AddCard onClick={() => addCardTo(col.id)} />}
-          <p style={{ ...TYPE.caption, color: COLORS.textMuted, textAlign: "center", marginTop: SPACE[4] }}>
-            Drag to reorder · move between columns on a wider screen or via a card
-          </p>
+          {/* Horizontal kanban: ~1.5 columns visible, snap, all mounted for cross-column drag. */}
+          <div className="no-sb" style={{ display: "flex", gap: SPACE[3], overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", paddingBottom: SPACE[2] }}>
+            {columns.map((col) => {
+              const ids = vis(containers[col.id] || []);
+              return (
+                <div key={col.id} ref={(el) => (colRefs.current[col.id] = el)} style={{ flex: "0 0 min(72vw, 280px)", minWidth: 0, scrollSnapAlign: "start" }}>
+                  <SectionLabel style={{ padding: "2px 4px 10px" }}>
+                    {col.label} <span style={{ opacity: 0.5 }}>{ids.length}</span>
+                  </SectionLabel>
+                  <Column id={col.id} empty={ids.length === 0}>
+                    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                      {ids.length
+                        ? ids.map(renderCard)
+                        : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
+                    </SortableContext>
+                  </Column>
+                  <AddCard onClick={() => addCardTo(col.id)} />
+                </div>
+              );
+            })}
+          </div>
         </>
       );
     }

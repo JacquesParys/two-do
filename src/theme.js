@@ -93,6 +93,10 @@ export function ensureFonts() {
     s.textContent = `
       @keyframes twodoFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
+      /* No stray text selection on tap/drag; inputs stay selectable. */
+      #root { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+
       /* Guaranteed min tap target without changing visual size. */
       .tap { position: relative; }
       .tap::after { content: ""; position: absolute; top: 50%; left: 50%;
