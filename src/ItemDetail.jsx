@@ -6,6 +6,10 @@ import { createItem, updateItem, deleteItem, listColumns, listStores, createStor
 const EMOJI = ["💕", "🎉", "🎸", "✈️", "🎂", "🍷", "🏖️", "🎬", "⚽", "🎄", "🎁", "🌟", "🍕", "🐱", "🏡", "💸"];
 const SWATCHES = ["#6BB5E8", "#7AA0E8", "#8FBFA3", "#E8C16B", "#E8896B", "#E86B9B", "#B98CE8", "#9B8CE8", "#C98B6B"];
 const swatch = { width: 30, height: 30, borderRadius: 15, cursor: "pointer", flexShrink: 0, padding: 0 };
+
+// Read/write the time-of-day on an ISO datetime (keeps the date).
+const timeOf = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const withTime = (iso, t) => { const d = iso ? new Date(iso) : new Date(); const [h, m] = (t || "0:0").split(":").map(Number); d.setHours(h || 0, m || 0, 0, 0); return d.toISOString(); };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const startOfWeek = (d) => { const x = new Date(d); const off = (x.getDay() + 6) % 7; x.setDate(x.getDate() - off); x.setHours(0, 0, 0, 0); return x; };
@@ -177,6 +181,14 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
               <DatePicker value={form[dateField]} onChange={(v) => set(dateField, v)} />
               {hasDate && (
                 <>
+                  <Label>{form.type === "event" ? "Start time" : "Time"}</Label>
+                  <input type="time" value={timeOf(form[dateField])} onChange={(e) => set(dateField, withTime(form[dateField], e.target.value))} style={input} />
+                  {form.type === "event" && (
+                    <>
+                      <Label>End time</Label>
+                      <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form.start_at, e.target.value))} style={input} />
+                    </>
+                  )}
                   <Label>Repeats</Label>
                   <Segmented
                     options={[{ value: "", label: "None" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }]}

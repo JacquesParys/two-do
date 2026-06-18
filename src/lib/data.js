@@ -430,13 +430,33 @@ export async function computeBalance() {
 
 // --- Mutations (real-mode; no-ops in mock so the UI stays optimistic) ------
 
+// Real `item` columns — anything else (e.g. UI-only `subtasks`, `store`,
+// `_recurring`, adapter fields) is dropped so Supabase doesn't 400 on it.
+const ITEM_COLUMNS = new Set([
+  "id", "space_id", "type", "title", "lane", "kind", "claimed_by", "notes", "emoji", "color",
+  "created_by", "created_at", "updated_at", "deleted_at", "parent_item_id", "linked_list_ids",
+  "due_at", "location_context", "column_id", "ord", "state", "persistent_until_done", "countdown",
+  "start_at", "end_at", "list_id", "qty", "price_estimate", "store_id", "checked", "checked_at",
+  "amount", "paid_by", "cost_attribution", "category", "spent_at", "from_shopping_item_id",
+  "recur_freq", "recur_until", "recur_except",
+]);
+function cleanItem(o) {
+  const out = {};
+  for (const k of Object.keys(o || {})) {
+    if (!ITEM_COLUMNS.has(k)) continue;
+    out[k] = o[k] === "" ? null : o[k]; // "" → null (empty uuid/enum/date columns reject "")
+  }
+  return out;
+}
+
 export async function createItem(item) {
   if (isMockMode) {
     const row = { id: `mock-${Date.now()}`, ord: Date.now(), ...item };
     mock.items.push(row);
     return row;
   }
-  const { data } = await supabase.from("item").insert(item).select().single();
+  const { data, error } = await supabase.from("item").insert(cleanItem(item)).select().single();
+  if (error) console.error("[data] createItem failed:", error.message, error);
   return data;
 }
 
@@ -446,7 +466,8 @@ export async function updateItem(id, patch) {
     if (row) Object.assign(row, patch);
     return row;
   }
-  const { data } = await supabase.from("item").update(patch).eq("id", id).select().single();
+  const { data, error } = await supabase.from("item").update(cleanItem(patch)).eq("id", id).select().single();
+  if (error) console.error("[data] updateItem failed:", error.message, error);
   return data;
 }
 
