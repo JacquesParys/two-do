@@ -128,7 +128,7 @@ create table item (
   list_id        uuid references list(id) on delete set null,
   qty            text,
   price_estimate numeric(12,2),
-  store_id       uuid references store(id) on delete set null,
+  store          text,                       -- store name (the `store` table is just the catalog for filter chips)
   checked        boolean default false,
   checked_at     timestamptz,
 

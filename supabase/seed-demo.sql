@@ -9,7 +9,6 @@ declare
   s uuid; pa uuid; pb uuid;
   c_someday uuid; c_soon uuid; c_today uuid; c_done uuid;
   l_groc uuid; l_house uuid;
-  st_metro uuid; st_hd uuid;
   i_japan uuid; g uuid;
 begin
   -- Target the space of YOUR signed-in account (avoids landing in an orphaned space).
@@ -29,8 +28,7 @@ begin
   select id into l_groc    from list where space_id = s and name = 'Groceries';
   select id into l_house   from list where space_id = s and name = 'House';
 
-  insert into store (space_id, name) values (s, 'Metro') returning id into st_metro;
-  insert into store (space_id, name) values (s, 'Home Depot') returning id into st_hd;
+  insert into store (space_id, name) values (s, 'Metro'), (s, 'Home Depot');  -- catalog for filter chips
 
   -- Board cards (some dated → also on the calendar; one custom color, one exciting)
   insert into item (space_id, type, title, lane, kind, column_id, ord, due_at)
@@ -68,13 +66,13 @@ begin
     values (s, 'task', 'Water the plants', 'shared', 'routine', date_trunc('day', now()) + interval '8 hours');
 
   -- Shopping in Groceries (one already checked → Done section)
-  insert into item (space_id, type, title, lane, kind, list_id, store_id, qty, checked) values
-    (s, 'shopping', 'Cat food', 'shared', 'routine', l_groc, st_metro, 'x2', false),
-    (s, 'shopping', 'Eggs',     'shared', 'routine', l_groc, st_metro, 'x12', false),
-    (s, 'shopping', 'Oat milk', 'partner_a', 'routine', l_groc, st_metro, null, false),
+  insert into item (space_id, type, title, lane, kind, list_id, store, qty, checked) values
+    (s, 'shopping', 'Cat food', 'shared', 'routine', l_groc, 'Metro', 'x2', false),
+    (s, 'shopping', 'Eggs',     'shared', 'routine', l_groc, 'Metro', 'x12', false),
+    (s, 'shopping', 'Oat milk', 'partner_a', 'routine', l_groc, 'Metro', null, false),
     (s, 'shopping', 'Sourdough','shared', 'routine', l_groc, null, null, true);
-  insert into item (space_id, type, title, lane, kind, list_id, store_id) values
-    (s, 'shopping', 'Light bulbs', 'shared', 'routine', l_house, st_hd);
+  insert into item (space_id, type, title, lane, kind, list_id, store) values
+    (s, 'shopping', 'Light bulbs', 'shared', 'routine', l_house, 'Home Depot');
 
   -- A card that references the standing Groceries list (linked, shown inline)
   insert into item (space_id, type, title, lane, kind, column_id, ord, linked_list_ids)

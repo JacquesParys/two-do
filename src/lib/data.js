@@ -436,7 +436,7 @@ const ITEM_COLUMNS = new Set([
   "id", "space_id", "type", "title", "lane", "kind", "claimed_by", "notes", "emoji", "color",
   "created_by", "created_at", "updated_at", "deleted_at", "parent_item_id", "linked_list_ids",
   "due_at", "location_context", "column_id", "ord", "state", "persistent_until_done", "countdown",
-  "start_at", "end_at", "list_id", "qty", "price_estimate", "store_id", "checked", "checked_at",
+  "start_at", "end_at", "list_id", "qty", "price_estimate", "store", "checked", "checked_at",
   "amount", "paid_by", "cost_attribution", "category", "spent_at", "from_shopping_item_id",
   "recur_freq", "recur_until", "recur_except",
 ]);
