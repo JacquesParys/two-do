@@ -115,7 +115,7 @@ function Column({ id, empty, children }) {
   );
 }
 
-const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => {
+const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataVersion = 0 }) => {
   const [ctx, setCtx] = useState(null);
   const [columns, setColumns] = useState([]);
   const [cards, setCards] = useState([]);
@@ -154,6 +154,19 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
     const u1 = subscribe("item", load);
     const u2 = subscribe("board_column", load);
     return () => { u1(); u2(); };
+  }, []);
+
+  // Reload in place when something elsewhere filed/edited (mock mode has no
+  // realtime, and even in real mode this keeps the view mounted — no flash).
+  useEffect(() => { if (dataVersion) load(); }, [dataVersion]);
+
+  // While a card drag is active, stop the page/columns scrolling under the finger.
+  const activeRef = useRef(null);
+  activeRef.current = activeId;
+  useEffect(() => {
+    const onTouchMove = (e) => { if (activeRef.current && e.cancelable) e.preventDefault(); };
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => window.removeEventListener("touchmove", onTouchMove);
   }, []);
 
   const colRefs = useRef({});
@@ -255,24 +268,28 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
               </Chip>
             ))}
           </div>
-          {/* Horizontal kanban: ~1.5 columns visible, snap, all mounted for cross-column drag. */}
-          <div className="no-sb" style={{ display: "flex", gap: SPACE[3], overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", paddingBottom: SPACE[2] }}>
-            {columns.map((col) => {
+          {/* Horizontal kanban: ~1.5 columns visible, snap, all mounted for cross-column
+              drag. Vertical padding lets the card glow/shadow show (overflow:auto clips). */}
+          <div className="no-sb" style={{ display: "flex", gap: SPACE[4], overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${SPACE[2]}px ${SPACE[1]}px ${SPACE[3]}px` }}>
+            {columns.map((col, ci) => {
               const ids = vis(containers[col.id] || []);
               return (
-                <div key={col.id} ref={(el) => (colRefs.current[col.id] = el)} style={{ flex: "0 0 min(72vw, 280px)", minWidth: 0, scrollSnapAlign: "start" }}>
-                  <SectionLabel style={{ padding: "2px 4px 10px" }}>
-                    {col.label} <span style={{ opacity: 0.5 }}>{ids.length}</span>
-                  </SectionLabel>
-                  <Column id={col.id} empty={ids.length === 0}>
-                    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                      {ids.length
-                        ? ids.map(renderCard)
-                        : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
-                    </SortableContext>
-                  </Column>
-                  <AddCard onClick={() => addCardTo(col.id)} />
-                </div>
+                <Fragment key={col.id}>
+                  {ci > 0 && <div aria-hidden style={{ width: 1, alignSelf: "stretch", background: COLORS.surfaceLight, flexShrink: 0 }} />}
+                  <div ref={(el) => (colRefs.current[col.id] = el)} style={{ flex: "0 0 min(74vw, 268px)", minWidth: 0, scrollSnapAlign: "start" }}>
+                    <SectionLabel style={{ padding: "2px 4px 10px" }}>
+                      {col.label} <span style={{ opacity: 0.5 }}>{ids.length}</span>
+                    </SectionLabel>
+                    <Column id={col.id} empty={ids.length === 0}>
+                      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                        {ids.length
+                          ? ids.map(renderCard)
+                          : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
+                      </SortableContext>
+                    </Column>
+                    <AddCard onClick={() => addCardTo(col.id)} />
+                  </div>
+                </Fragment>
               );
             })}
           </div>

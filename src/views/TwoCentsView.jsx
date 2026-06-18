@@ -19,7 +19,7 @@ const dueLabel = (raw) => {
 const pad = { padding: "0 16px" };
 const linkBtn = { background: "none", border: "none", color: COLORS.accent, cursor: "pointer", font: "inherit", textDecoration: "underline" };
 
-const TwoCentsView = ({ isDesktop }) => {
+const TwoCentsView = ({ isDesktop, dataVersion = 0 }) => {
   const [ctx, setCtx] = useState(null);
   const [fin, setFin] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +32,8 @@ const TwoCentsView = ({ isDesktop }) => {
       .catch(() => { setError(true); setLoading(false); });
   }
   useEffect(() => { load(); }, []);
+  // Reload in place when an expense/settlement was filed/edited (no remount, no flash).
+  useEffect(() => { if (dataVersion) load(); }, [dataVersion]);
 
   if (loading) return <div style={pad}><EmptyState>Counting the pennies…</EmptyState></div>;
   if (error) return (

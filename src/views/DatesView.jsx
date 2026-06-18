@@ -93,7 +93,7 @@ function MonthBlock({ date, rootRef, eventsOn, onDayClick, onOpenItem, ctx, onVi
   );
 }
 
-const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
+const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 }) => {
   const [ref, setRef] = useState(() => new Date());
   const [mode, setMode] = useState("week");
   const [ctx, setCtx] = useState(null);
@@ -112,6 +112,8 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
       .catch(() => { setError(true); setLoading(false); });
   }
   useEffect(() => { load(); }, []);
+  // Reload in place when something elsewhere filed/edited (keeps scroll + view mounted).
+  useEffect(() => { if (dataVersion) load(); }, [dataVersion]);
 
   // Persist a timeline drag (move/resize) then refresh.
   async function persist(id, patch) { await updateItem(id, patch); load(); }
@@ -120,8 +122,17 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
   const [weekActiveId, setWeekActiveId] = useState(null);
   const weekSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+    // Deliberate press-and-hold on touch so a quick swipe scrolls instead of dragging.
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
+  // While a week-view drag is active, stop the list scrolling under the finger.
+  const weekActiveRef = useRef(null);
+  weekActiveRef.current = weekActiveId;
+  useEffect(() => {
+    const onTouchMove = (e) => { if (weekActiveRef.current && e.cancelable) e.preventDefault(); };
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => window.removeEventListener("touchmove", onTouchMove);
+  }, []);
   function onWeekDragEnd({ active, over }) {
     setWeekActiveId(null);
     if (!over) return;

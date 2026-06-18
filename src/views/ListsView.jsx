@@ -31,7 +31,7 @@ function InlineAdd({ placeholder, label, onAdd }) {
 
 const fadeX = { WebkitMaskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)", maskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)" };
 
-const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => {
+const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataVersion = 0 }) => {
   const [ctx, setCtx] = useState(null);
   const [lists, setLists] = useState([]);
   const [stores, setStores] = useState([]);
@@ -54,6 +54,8 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
     }
   }
   useEffect(() => { load(); const u = subscribe("item", load); return () => u(); }, []);
+  // Reload in place when something elsewhere filed/edited (no remount, no flash).
+  useEffect(() => { if (dataVersion) load(); }, [dataVersion]);
 
   // Check the box first (in place), then let it move to/from Done — feels complete.
   async function toggle(it) {
