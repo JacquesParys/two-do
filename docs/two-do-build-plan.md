@@ -2,7 +2,7 @@
 
 *Companion to [`two-do-toc.md`](two-do-toc.md). Nails down the data model first (stack-agnostic), then details Phase 0 (Foundations) and Phase 1 (Core loop). Phases 2–3 stay high-level until we get there.*
 
-> **Stack:** deliberately undecided. The data model below is described in neutral terms (entities, fields, relationships) so it maps cleanly onto either a relational store (Postgres/Supabase) or a document store (Firestore). Vendor choice happens at the top of Phase 0.
+> **Stack (decided):** **Supabase** (Postgres + RLS + realtime + auth). The model below was written stack-neutral; the live schema is [`supabase/schema.sql`](../supabase/schema.sql). Some early "to decide in Phase 1" notes are now resolved — see §1.5 and `README.md` Status for the current state.
 
 ---
 

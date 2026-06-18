@@ -50,30 +50,28 @@ Everything below is **front-end only, mock data, no persistence**. The shell is 
 - **Add FAB + add-sheet:** manual-entry path (Event / Task / Shopping item / Expense).
 - **Design system in code:** color tokens, Fraunces + DM Sans, lane badges, sleeps chips, progress bars, exciting glow.
 
-### Built since (Phase 0.5 / early Phase 2)
+### Built — now live & deployed
 
-- **Project is a real app** — Vite + React PWA, Supabase schema, data-access layer with mock fallback, viewer-aware lane resolver (tested).
-- **Cards wired to the data layer** — reads via `data.js`, lane badges resolved per viewer, realtime subscriptions (live in real mode).
-- **Desktop responsive** — expands at ≥760px; Cards shows columns side-by-side.
-- **The Grown-Up review tray** — full-screen takeover, draft cards, swipe + buttons to accept/dismiss, files via `data.js`. Built against a **stub parser**.
-- **Pluggable parser** — `lib/parser.js` behind one interface; swap path stub → Claude → local home-lab service, UI unchanged.
-- **Item detail editor** — tap any card or calendar event → full-screen slide-in editor (title, lane, date, notes, exciting+emoji, persistent, column, amount, delete). Saves via the data layer.
-- **Add buttons work** — the + FAB and add-sheet create real items (Event/Task/Shopping/Expense) and open the editor.
-- **Move cards** — ‹ › on each card shifts it between columns.
-- **Dates navigation** — prev/next for day/week/month with real date math; calendar events come from the data layer and are clickable to edit.
+The prototype is a real, shipped app: **deployed** (Vercel; a GitHub Pages workflow also exists), on **real Supabase** with email+password auth, RLS, persistence, and a **two-person shared space**. Highlights:
+
+- **Field-driven taxonomy** — "one item, three views"; subtasks + ad-hoc *attached* checklists via `parent_item_id`; *linked* standing lists via `linked_list_ids` (many-to-many); optional per-item custom color.
+- **Layered/tactile UI + design-token system** (color/space/type/radius/shadow/motion), shared primitives, and an accessible `Modal` (role/Esc/focus-trap; center/sheet/push). Proximity + completion **fill** backdrops; exciting glow in the item's node color.
+- **Dates** — day/week/month; a **24h day-timeline** with drag-to-move/resize; **week drag-to-reschedule**; **recurrence** (daily/weekly/monthly) expanded on read.
+- **Cards** — real **drag-and-drop** (dnd-kit), per-column add, column rename/reorder/add/delete, subtask progress.
+- **Lists** — per-store grouping + filters, animated check-off, inline add, delete-from-done, inline editing of linked lists.
+- **Two Cents** — wired to the data layer: bills, savings goals + contributions, "Owe Snap" from expenses + settlements.
+- **Capture** — the Grown-Up review tray (stub parser) + create-as-editor with a type selector; pluggable `lib/parser.js`.
 
 ### Not built yet
 
-- **Real AI parsing** — stub only; Claude backend is the next parser step (then a local home-lab service).
-- **Voice capture** — mic is decorative; no Web Speech API wiring.
-- **Live persistence** — data layer + Supabase schema exist; real persistence/sync awaits onboarding/auth (mock works now).
-- **Auth & shared space** — no accounts, no two-person pairing, no invite flow.
-- **Onboarding** — the 3-screen flow (name, colour, invite) doesn't exist.
-- **Drag-and-drop & column editing** — cards move via ‹ › buttons today; true drag-drop, reorder, rename/add/delete columns still pending.
-- **Recurrence** — no repeat rules or series-vs-occurrence editing.
-- **Nudges & push** — no in-app nudges, no PWA service worker, no notifications.
-- **Context tags & surfacing** — no `@home`/`@out` engine; geofencing untouched (phase 3 anyway).
-- **Settings** — no lane colour, label-style, or column configuration.
+- **Partner invite/join flow** — a second person currently joins by being linked to the space's `partner_b` (manual SQL); needs an invite link/code + join RPC.
+- **Real AI parsing** — stub only; Claude backend then a local home-lab service.
+- **Recurrence v2** — per-occurrence ("this one only") edits + richer rules (interval N / weekdays / nth-weekday).
+- **Voice capture** — mic is decorative (no Web Speech API).
+- **Nudges & push** — no in-app nudges or notifications (PWA SW scaffolding is in place).
+- **The Grown-Up clarifying chat** — parser jumps straight to drafts.
+- **Context tags & surfacing** — no `@home`/`@out` engine; geofencing untouched (phase 3).
+- **Settings UI** — lane colour / label-style pickers (column config exists; per-item color exists).
 
 ---
 
