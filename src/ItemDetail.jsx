@@ -145,7 +145,7 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           <button onClick={save} style={{ ...iconBtn, color: COLORS.accent, fontWeight: 600 }}>Save</button>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 22px" }}>
+        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "14px 16px 22px" }}>
           <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" style={{ ...input, fontSize: 16, fontWeight: 600 }} />
 
           <Label>Type</Label>
@@ -171,11 +171,11 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
               {hasDate && (
                 <>
                   <Label>{form.type === "event" ? "Start time" : "Time"}</Label>
-                  <input type="time" value={timeOf(form[dateField])} onChange={(e) => set(dateField, withTime(form[dateField], e.target.value))} style={input} />
+                  <input type="time" value={timeOf(form[dateField])} onChange={(e) => set(dateField, withTime(form[dateField], e.target.value))} style={timeInput} />
                   {form.type === "event" && (
                     <>
                       <Label>End time</Label>
-                      <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form.start_at, e.target.value))} style={input} />
+                      <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form.start_at, e.target.value))} style={timeInput} />
                     </>
                   )}
                   <Label>Repeats</Label>
@@ -351,6 +351,8 @@ function StorePicker({ stores, value, onChange, onAdd }) {
 const chip = (on) => ({ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: on ? COLORS.accent : COLORS.surface, color: on ? COLORS.bg : COLORS.textSecondary });
 
 const input = { width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, fontFamily: "'DM Sans', sans-serif", fontSize: 16, color: COLORS.textPrimary, outline: "none", caretColor: COLORS.accent, marginBottom: 4 };
+// Time fields size to their content (native time widget) so they never overflow the frame.
+const timeInput = { ...input, width: "auto", maxWidth: "100%", minWidth: 0 };
 const iconBtn = { background: "none", border: "none", color: COLORS.textPrimary, fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" };
 const deleteBtn = { marginTop: 18, width: "100%", padding: "11px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: "transparent", color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13, cursor: "pointer" };
 const pickerNav = { width: 26, height: 26, borderRadius: 13, border: "none", background: COLORS.surfaceLight, color: COLORS.textPrimary, cursor: "pointer", fontSize: 14 };

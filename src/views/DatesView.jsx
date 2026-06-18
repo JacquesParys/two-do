@@ -5,7 +5,7 @@ import { LaneBadge, SleepsChip, Card, EmptyState, IconButton, timeProximity, Lin
 import { getBootstrap, listCalendar, updateItem, getListSummaries } from "../lib/data.js";
 import { laneLabel as resolveLaneLabel, laneColor as resolveLaneColor, SLOTS } from "../lib/lanes.js";
 import { itemsOnDay } from "../lib/recurrence.js";
-import DayTimeline from "./DayTimeline.jsx";
+import DayTimeline, { atMinutes } from "./DayTimeline.jsx";
 
 // Move an ISO datetime onto a target day, keeping its time-of-day.
 const moveToDay = (iso, day) => { const d = new Date(iso); const n = new Date(day); n.setHours(d.getHours(), d.getMinutes(), 0, 0); return n; };
@@ -279,7 +279,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     body = (
       <>
         {fullHeader}
-        <DndContext sensors={weekSensors} collisionDetection={closestCenter} onDragStart={(e) => setWeekActiveId(e.active.id)} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
+        <DndContext sensors={weekSensors} autoScroll={false} collisionDetection={closestCenter} onDragStart={(e) => setWeekActiveId(e.active.id)} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {weekDays.map((day, i) => {
               const evs = eventsOn(day);
@@ -322,7 +322,8 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
               </button>
             ))}
           </div>
-          <DayTimeline day={ref} items={eventsOn(ref)} ctx={ctx} summaries={summaries} onOpenItem={openItem} onChange={persist} />
+          <DayTimeline day={ref} items={eventsOn(ref)} ctx={ctx} summaries={summaries} onOpenItem={openItem} onChange={persist}
+            onCreate={(mins) => onOpenItem?.({ type: "event", kind: "routine", lane: laneFilter !== "all" ? laneFilter : SLOTS.SHARED, start_at: atMinutes(ref, mins).toISOString(), end_at: atMinutes(ref, mins + 60).toISOString() })} />
         </div>
       </div>
     );

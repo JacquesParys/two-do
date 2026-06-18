@@ -61,12 +61,12 @@ function packColumns(blocks) {
   return out;
 }
 
-export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenItem, onChange }) {
+export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenItem, onChange, onCreate }) {
   const scrollRef = useRef(null);
   const dragRef = useRef(null);
   const holdRef = useRef(null); // pending press-and-hold (touch) before a drag commits
   const propsRef = useRef({});
-  propsRef.current = { day, onChange, onOpenItem };
+  propsRef.current = { day, onChange, onOpenItem, onCreate };
 
   const [drag, setDrag] = useState(null);
   const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
@@ -197,6 +197,15 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
     holdRef.current = { it, x: e.clientX, y: e.clientY, lastY: e.clientY, timer };
   }
 
+  // Tap an empty slot in the events column → create an event at that (snapped) time.
+  // Ignored when the tap lands on a block (target !== the column itself).
+  function onEmptyTap(e) {
+    if (e.target !== e.currentTarget) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mins = clamp(snap((e.clientY - rect.top) / pxPerMin), 0, DAY_MIN - DEFAULT_DUR);
+    propsRef.current.onCreate?.(mins);
+  }
+
   const packed = packColumns(toBlocks(items || []));
   const live = (id) => (drag && drag.it.id === id ? drag : null);
   const lc = (it) => (ctx ? resolveLaneColor(it.lane, ctx.people, COLORS) : COLORS.laneUs);
@@ -238,8 +247,9 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
           <div style={{ position: "absolute", left: GUTTER, right: 6, top: nowMin * pxPerMin, height: 0, borderTop: `1.5px solid ${COLORS.accent}`, zIndex: 6, pointerEvents: "none" }} />
         )}
 
-        {/* Items (right of the hour gutter) — one treatment for events and tasks */}
-        <div style={{ position: "absolute", left: GUTTER, right: 6, top: 0, bottom: 0 }}>
+        {/* Items (right of the hour gutter) — one treatment for events and tasks.
+            Tapping the empty column (not a block) creates an event at that time. */}
+        <div onClick={onEmptyTap} style={{ position: "absolute", left: GUTTER, right: 6, top: 0, bottom: 0 }}>
           {packed.map((b) => {
             const d = live(b.it.id);
             const topMin = d ? d.topMin : b.startMin;
