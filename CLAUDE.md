@@ -59,4 +59,4 @@ The tab labels live in the `TABS` array in `TwoDoShell.jsx`, matched **positiona
 - Lanes are stored neutral (`partner_a`/`partner_b`/`shared`) and displayed per-viewer — never store "Me/You/Us".
 - Vitest runs with `environment: "node"` (see `vite.config.js`) — tests cover logic (lanes, parser), not the DOM.
 - `docs/` holds the spec set (product spec, UI spec, build plan, handoff) and is the **source of truth for product behavior**; `docs/two-do-toc.md` indexes it.
-- The project is at **Phase 0 (Foundations)**; wiring each view to the live data layer is the ongoing increment (see `docs/two-do-build-plan.md`).
+- The app is **live and deployed** against real Supabase (auth + persistence, two-person shared space); all four views are wired to the data layer. Remaining work is feature polish, not scaffolding (see Status in `README.md` and `docs/two-do-build-plan.md`).

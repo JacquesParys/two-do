@@ -15,7 +15,7 @@ See [`docs/two-do-toc.md`](docs/two-do-toc.md) for the full doc set, roadmap, an
 npm install
 npm run dev      # starts the app (MOCK mode if no Supabase env)
 npm run build    # production build
-npm test         # unit tests (viewer-aware lane logic)
+npm test         # unit tests (lanes, recurrence, data layer, tokens, parser)
 ```
 
 Without Supabase credentials the app boots in **mock mode** — in-memory data, no sync — so you can develop the UI offline.
@@ -43,28 +43,49 @@ Contract (any backend can implement it): `POST { text, viewerSlot } → { drafts
 ## Project layout
 
 ```
-docs/                 specs, UI spec, handoff, TOC, build plan
-supabase/schema.sql   the data model as Postgres (RLS + seed)
+docs/                   specs, UI spec, handoff, TOC, build plan
+.github/workflows/      GitHub Pages deploy
+supabase/
+  schema.sql            data model: tables + RLS + bootstrap_space RPC (+ seed trigger)
+  seed-demo.sql         optional demo data for a real space (targets your account by email)
+  functions/parse/      reference AI-parse edge function
 src/
-  TwoDoShell.jsx      app shell: tabs, input bar, FAB, review-tray wiring
-  ReviewTray.jsx      the Grown-Up confirm-before-file flow
-  theme.js            design tokens (colors, fonts, float keyframes)
+  main.jsx              entry → AuthGate
+  AuthGate.jsx          mock passthrough / email-password sign-in / first-run bootstrap
+  TwoDoShell.jsx        app shell: tabs, input bar, FAB, lane filter, modal wiring
+  ItemDetail.jsx        item editor: type, lane, color, date, recurrence, linked lists
+  ReviewTray.jsx        the Grown-Up confirm-before-file flow
+  ColumnsEditor.jsx     kanban column editor
+  theme.js              design tokens (color/space/type/radius/shadow/motion) + injected CSS
   components/
-    primitives.jsx    LaneBadge, SleepsChip, ProgressBar, shared styles
+    primitives.jsx      Card, Chip, LaneBadge, ProgressBar, LinkedListChips, LaneFill, …
+    Modal.jsx           accessible overlay (role/Esc/focus-trap; center | sheet | push)
+    LaneFilter.jsx      Me/You/Us/all filter
   views/
-    DatesView.jsx     calendar (Dates tab)
-    CardsView.jsx     kanban (Cards tab) — wired to the data layer
-    ListsView.jsx     lists (Lists tab)
-    TwoCentsView.jsx  finance (Two Cents tab)
-    helpers.js        formatDue + card adapter
+    DatesView.jsx       calendar (Dates) — day / week / month, recurrence expansion
+    DayTimeline.jsx     24h day timeline with drag-to-move / resize
+    CardsView.jsx       kanban (Cards)
+    ListsView.jsx       lists (Lists)
+    TwoCentsView.jsx    finance (Two Cents)
+    helpers.js          formatDue + card adapter (nodeColor, proximity, linked lists)
   lib/
-    supabase.js       client + mock-mode flag
-    lanes.js          viewer-aware Me/You/Us resolver
-    lanes.test.js     tests for the lane logic
-    data.js           data-access layer (Supabase + mock fallback)
-    parser.js         pluggable brain-dump parser (stub → Claude → local)
+    supabase.js         client + mock-mode flag + remember-me storage
+    auth.js             sign-up/in, session, ensureBootstrap
+    data.js             single data-access layer (Supabase + mock fallback)
+    lanes.js            viewer-aware Me/You/Us resolver
+    recurrence.js       occurrence expansion (occursOn / occurrenceFor / itemsOnDay)
+    parser.js           pluggable brain-dump parser (stub → Claude → local)
 ```
 
-## Where we are
+## Deploy
 
-**Phase 0 (Foundations)** — schema, project scaffold, PWA, data layer, lane logic. The shell renders; wiring each view to the live data layer is the next increment. Phases 1–3 are detailed in the build plan.
+- **Vercel / Netlify (quickest):** import the repo, set `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`, deploy. Serves at the domain root — no extra config.
+- **GitHub Pages:** `.github/workflows/deploy.yml` builds with `BASE_PATH=/two-do/` and publishes `dist/` (Settings → Pages → Source: **GitHub Actions**; add the two vars as Actions **secrets**).
+
+Every push to `master` auto-redeploys.
+
+## Status
+
+Live and in two-person daily use — deployed, with real Supabase auth + persistence and a shared space. Built so far: the field-driven item model ("one item, three views"), the layered/tactile UI + design-token system, the Dates **day-timeline** (drag-to-move/resize) and week drag-to-reschedule, **embedded recurrence**, standalone + **linked** lists and subtasks (via `parent_item_id`), per-item custom colors, and the finance tab. The phased plan and source-of-truth rules live in [`docs/two-do-build-plan.md`](docs/two-do-build-plan.md) and [`docs/two-do-toc.md`](docs/two-do-toc.md).
+
+Known follow-ups: partner-invite/join flow (a second person currently joins by being linked to the space's `partner_b`), recurrence per-occurrence edits + richer rules, and the Phase-2 niceties (nudges/push, voice capture, the review-tray clarifying chat).
