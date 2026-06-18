@@ -1,8 +1,24 @@
 import { useState, useEffect, useRef } from "react";
-import { COLORS } from "../theme";
-import { LaneBadge, SleepsChip } from "../components/primitives.jsx";
-import { getBootstrap, listCalendar } from "../lib/data.js";
+import { DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors, useDroppable, useDraggable, closestCenter } from "@dnd-kit/core";
+import { COLORS, TYPE, SPACE, RADIUS, withAlpha } from "../theme";
+import { LaneBadge, SleepsChip, Card, EmptyState, IconButton, timeProximity, LinkedListChips } from "../components/primitives.jsx";
+import { getBootstrap, listCalendar, updateItem, getListSummaries } from "../lib/data.js";
 import { laneLabel as resolveLaneLabel, laneColor as resolveLaneColor, SLOTS } from "../lib/lanes.js";
+import { itemsOnDay } from "../lib/recurrence.js";
+import DayTimeline from "./DayTimeline.jsx";
+
+// Move an ISO datetime onto a target day, keeping its time-of-day.
+const moveToDay = (iso, day) => { const d = new Date(iso); const n = new Date(day); n.setHours(d.getHours(), d.getMinutes(), 0, 0); return n; };
+
+// Week-view drag wrappers — drop an entry on another day to reschedule it.
+function DroppableDay({ id, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return <div ref={setNodeRef} style={{ borderRadius: 10, minHeight: 10, background: isOver ? withAlpha(COLORS.accent, 0.1) : "transparent", transition: "background 120ms ease" }}>{children}</div>;
+}
+function DraggableEvent({ id, children }) {
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id });
+  return <div ref={setNodeRef} {...listeners} {...attributes} className="focusable" style={{ opacity: isDragging ? 0.4 : 1, touchAction: "manipulation" }}>{children}</div>;
+}
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -18,14 +34,12 @@ const sleepsUntil = (d) => { const t = new Date(); t.setHours(0, 0, 0, 0); const
 const eventDate = (e) => new Date(e.start_at || e.due_at);
 const monthId = (d) => `m-${d.getFullYear()}-${d.getMonth()}`;
 
-const Chevron = ({ dir }) => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={COLORS.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+const Chevron = ({ dir, color = COLORS.textPrimary }) => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     {dir === "left" ? <polyline points="15 6 9 12 15 18" /> : <polyline points="9 6 15 12 9 18" />}
   </svg>
 );
 
-const sideArrow = { flexShrink: 0, alignSelf: "center", width: 30, height: 30, borderRadius: 15, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${COLORS.green}`, background: COLORS.greenMuted, cursor: "pointer", padding: 0 };
-const emptyMsg = { fontFamily: "'Fraunces', serif", fontSize: 14, fontStyle: "italic", color: COLORS.textMuted, textAlign: "center", padding: "40px 20px" };
 const dowStyle = { textAlign: "center", fontSize: 9, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: COLORS.textMuted, textTransform: "uppercase", padding: "4px 0" };
 
 // A single month grid; dims itself based on how visible it is in the scroller.
@@ -87,9 +101,44 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const monthScrollRef = useRef(null);
 
-  useEffect(() => {
-    Promise.all([getBootstrap(), listCalendar()]).then(([b, ev]) => { setCtx(b); setEvents(ev); });
-  }, []);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [summaries, setSummaries] = useState({});
+
+  function load() {
+    setError(false);
+    Promise.all([getBootstrap(), listCalendar(), getListSummaries()])
+      .then(([b, ev, sums]) => { setCtx(b); setEvents(ev); setSummaries(sums); setLoading(false); })
+      .catch(() => { setError(true); setLoading(false); });
+  }
+  useEffect(() => { load(); }, []);
+
+  // Persist a timeline drag (move/resize) then refresh.
+  async function persist(id, patch) { await updateItem(id, patch); load(); }
+
+  // Week view: drag an entry between days to reschedule (keeping time-of-day).
+  const [weekActiveId, setWeekActiveId] = useState(null);
+  const weekSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+  );
+  function onWeekDragEnd({ active, over }) {
+    setWeekActiveId(null);
+    if (!over) return;
+    const idx = Number(String(over.id).replace("day-", ""));
+    const item = events.find((e) => e.id === active.id);
+    if (!item || Number.isNaN(idx) || !weekDays[idx]) return;
+    const anchor = item.start_at || item.due_at;
+    if (!anchor || sameDay(new Date(anchor), weekDays[idx])) return;
+    const ns = moveToDay(anchor, weekDays[idx]);
+    if (item.start_at) {
+      const patch = { start_at: ns.toISOString() };
+      if (item.end_at) patch.end_at = new Date(ns.getTime() + (new Date(item.end_at) - new Date(item.start_at))).toISOString();
+      persist(item.id, patch);
+    } else {
+      persist(item.id, { due_at: ns.toISOString() });
+    }
+  }
 
   // When entering Month mode, jump to the current month.
   useEffect(() => {
@@ -108,28 +157,34 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
   };
 
   const passesFilter = (e) => laneFilter === "all" || e.lane === laneFilter;
-  const eventsOn = (day) => events.filter((e) => passesFilter(e) && sameDay(eventDate(e), day)).sort((a, b) => eventDate(a) - eventDate(b));
+  // Expand recurring items into per-day occurrences (virtual; not stored).
+  const eventsOn = (day) => itemsOnDay(events.filter(passesFilter), day, (e, d) => sameDay(eventDate(e), d)).sort((a, b) => eventDate(a) - eventDate(b));
+  // Recurring occurrences open their master series item.
+  const openItem = (it) => onOpenItem?.(it._master || it);
 
   const Event = ({ e }) => {
     const exciting = e.kind === "exciting";
     const d = eventDate(e);
     const label = ctx ? resolveLaneLabel(e.lane, viewer, ctx.space) : e.lane;
     const color = ctx ? resolveLaneColor(e.lane, ctx.people, COLORS) : COLORS.laneUs;
+    const nodeColor = e.color || color;
     const s = sleepsUntil(d);
     return (
-      <div onClick={() => onOpenItem?.(e)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, marginBottom: 6, cursor: "pointer", background: exciting ? COLORS.accentMuted : COLORS.surface, border: exciting ? `1px solid ${COLORS.accentGlow}40` : "1px solid transparent" }}>
-        <span style={{ minWidth: 42, fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: exciting ? COLORS.accent : COLORS.textMuted }}>{fmtTime(d)}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-            {exciting && e.emoji && <span style={{ fontSize: 14 }}>{e.emoji}</span>}
-            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: exciting ? 500 : 400, color: COLORS.textPrimary }}>{e.title}</span>
+      <Card laneColor={nodeColor} exciting={exciting} proximity={timeProximity(e)} onClick={() => openItem(e)} style={{ padding: `${SPACE[3]}px ${SPACE[3]}px`, marginBottom: SPACE[2] }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2] }}>
+          <span style={{ minWidth: 42, ...TYPE.meta, color: exciting ? nodeColor : COLORS.textMuted, paddingTop: 1 }}>{fmtTime(d)}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {exciting && e.emoji && <span style={{ fontSize: 14 }}>{e.emoji}</span>}
+              <span style={{ ...TYPE.body, fontWeight: exciting ? 500 : 400, color: COLORS.textPrimary }}>{e.title}</span>
+              {e._recurring && <span title="Repeats" style={{ color: COLORS.textMuted, fontSize: 13 }}>↻</span>}
+            </div>
+            {e.countdown && s > 0 && <div style={{ marginTop: 4 }}><SleepsChip days={s} /></div>}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <LaneBadge label={label} color={color} />
-            {e.countdown && s > 0 && <SleepsChip days={s} />}
-          </div>
+          <LaneBadge label={label} color={color} />
         </div>
-      </div>
+        <LinkedListChips lists={(e.linked_list_ids || []).map((id) => summaries[id]).filter(Boolean)} />
+      </Card>
     );
   };
 
@@ -141,16 +196,47 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
     : mode === "day" ? `${ref.getDate()} ${MONTHS[ref.getMonth()].slice(0, 3)} ${ref.getFullYear()}`
     : `${MONTHS[visibleMonth.getMonth()]} ${visibleMonth.getFullYear()}`;
 
+  // The big serif date heading, flanked by nav arrows — shared by Day and Week.
+  // Day mode advances by a day, Week mode by a week (handled in `step`).
+  const fullHeader = (
+    <div style={{ display: "flex", alignItems: "center", gap: SPACE[3], marginBottom: 14 }}>
+      <IconButton onClick={() => step(-1)} label="Previous" size={32} icon={<Chevron dir="left" />} />
+      <span style={{ flex: 1, textAlign: "center", fontFamily: "'Fraunces', serif", fontSize: 18, color: COLORS.textPrimary }}>
+        {DOW[(ref.getDay() + 6) % 7]} {ref.getDate()} {MONTHS[ref.getMonth()].slice(0, 3)}{isToday(ref) ? " · Today" : ""}
+      </span>
+      <IconButton onClick={() => step(1)} label="Next" size={32} icon={<Chevron dir="right" />} />
+    </div>
+  );
+
   const header = (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: COLORS.textSecondary }}>{headerLabel}</span>
-      <div style={{ display: "flex", background: COLORS.surface, borderRadius: 10, padding: 2 }}>
-        {["Day", "Week", "Month"].map((m) => (
-          <button key={m} onClick={() => setMode(m.toLowerCase())} style={{ padding: "4px 12px", borderRadius: 8, border: "none", fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, cursor: "pointer", background: mode === m.toLowerCase() ? COLORS.surfaceLight : "transparent", color: mode === m.toLowerCase() ? COLORS.textPrimary : COLORS.textMuted }}>{m}</button>
-        ))}
+    <div style={{ display: "flex", justifyContent: mode === "month" ? "space-between" : "flex-end", alignItems: "center", marginBottom: 10 }}>
+      {mode === "month" && <span style={{ ...TYPE.body, fontWeight: 500, color: COLORS.textPrimary }}>{headerLabel}</span>}
+      <div style={{ display: "flex", background: COLORS.surface, borderRadius: RADIUS.md, padding: 2 }}>
+        {["Day", "Week", "Month"].map((m) => {
+          const on = mode === m.toLowerCase();
+          return (
+            <button key={m} onClick={() => setMode(m.toLowerCase())} aria-pressed={on} className="focusable"
+              style={{ ...TYPE.caption, padding: "5px 12px", borderRadius: RADIUS.sm, border: "none", cursor: "pointer", background: on ? COLORS.surfaceLight : "transparent", color: on ? COLORS.textPrimary : COLORS.textMuted }}>{m}</button>
+          );
+        })}
       </div>
     </div>
   );
+
+  if (loading || error) {
+    return (
+      <div style={{ padding: "0 8px" }}>
+        {error ? (
+          <EmptyState style={{ fontStyle: "normal" }}>
+            Couldn’t load the calendar.{" "}
+            <button onClick={load} className="focusable" style={{ background: "none", border: "none", color: COLORS.accent, cursor: "pointer", font: "inherit", textDecoration: "underline" }}>Try again</button>
+          </EmptyState>
+        ) : (
+          <EmptyState>Loading the calendar…</EmptyState>
+        )}
+      </div>
+    );
+  }
 
   // ----- Month: infinite vertical scroll -----
   if (mode === "month") {
@@ -166,7 +252,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
               rootRef={monthScrollRef}
               ctx={ctx}
               eventsOn={eventsOn}
-              onOpenItem={onOpenItem}
+              onOpenItem={openItem}
               onDayClick={(day) => { setRef(day); setMode("day"); }}
               onVisible={(d) => setVisibleMonth((v) => (v.getMonth() === d.getMonth() && v.getFullYear() === d.getFullYear() ? v : d))}
             />
@@ -180,50 +266,61 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all" }) => {
   let body;
   if (mode === "week") {
     body = (
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {weekDays.map((day, i) => {
-          const evs = eventsOn(day);
-          return (
-            <div key={i} style={{ borderTop: i > 0 ? `1px solid ${COLORS.surfaceLight}` : "none", padding: i > 0 ? "12px 0 4px" : "0 0 4px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : COLORS.surfaceLight }}>{day.getDate()}</div>
-                <span style={{ fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: isToday(day) ? COLORS.accent : COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 }}>{DOW[i]}{isToday(day) ? " · Today" : ""}</span>
-              </div>
-              <div style={{ marginLeft: 40 }}>
-                {evs.length ? evs.map((e) => <Event key={e.id} e={e} />) : <div style={{ padding: "2px 0 4px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, fontStyle: "italic" }}>—</div>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  } else {
-    const evs = eventsOn(ref);
-    body = (
       <>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 16 }}>
-          {weekDays.map((day, i) => (
-            <button key={i} onClick={() => setRef(day)} style={{ textAlign: "center", padding: "8px 0", borderRadius: 12, border: "none", cursor: "pointer", background: sameDay(day, ref) ? COLORS.surfaceLight : "transparent" }}>
-              <div style={{ fontSize: 9, color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase" }}>{DOW[i]}</div>
-              <div style={{ width: 30, height: 30, borderRadius: 15, display: "flex", alignItems: "center", justifyContent: "center", margin: "4px auto 0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : "transparent" }}>{day.getDate()}</div>
-              <div style={{ minHeight: 6, marginTop: 3 }}>{eventsOn(day).length > 0 && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: COLORS.textMuted }} />}</div>
-            </button>
-          ))}
-        </div>
-        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 16, color: COLORS.textPrimary, marginBottom: 12 }}>{DOW[(ref.getDay() + 6) % 7]} {ref.getDate()} {MONTHS[ref.getMonth()].slice(0, 3)}{isToday(ref) ? " · Today" : ""}</div>
-        {evs.length ? evs.map((e) => <Event key={e.id} e={e} />) : <p style={emptyMsg}>Nothing on this day. Bliss or denial — you decide.</p>}
+        {fullHeader}
+        <DndContext sensors={weekSensors} collisionDetection={closestCenter} onDragStart={(e) => setWeekActiveId(e.active.id)} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {weekDays.map((day, i) => {
+              const evs = eventsOn(day);
+              return (
+                <div key={i} style={{ borderTop: i > 0 ? `1px solid ${COLORS.surfaceLight}` : "none", padding: i > 0 ? "12px 0 4px" : "0 0 4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : COLORS.surfaceLight }}>{day.getDate()}</div>
+                    <span style={{ fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: isToday(day) ? COLORS.accent : COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 }}>{DOW[i]}{isToday(day) ? " · Today" : ""}</span>
+                  </div>
+                  <DroppableDay id={`day-${i}`}>
+                    {evs.length ? evs.map((e) => (
+                      e._recurring
+                        ? <Event key={e.id} e={e} />
+                        : <DraggableEvent key={e.id} id={e.id}><Event e={e} /></DraggableEvent>
+                    )) : <div style={{ padding: "2px 0 4px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, fontStyle: "italic" }}>—</div>}
+                  </DroppableDay>
+                </div>
+              );
+            })}
+          </div>
+          <DragOverlay>{weekActiveId && events.find((e) => e.id === weekActiveId) ? <Event e={events.find((e) => e.id === weekActiveId)} /> : null}</DragOverlay>
+        </DndContext>
       </>
+    );
+  }
+
+  // ----- Day: a 24h timeline with drag-to-move / resize -----
+  if (mode === "day") {
+    return (
+      <div style={{ padding: "0 8px" }}>
+        {header}
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 270px)" }}>
+          {fullHeader}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 12, flexShrink: 0 }}>
+            {weekDays.map((day, i) => (
+              <button key={i} onClick={() => setRef(day)} className="focusable" style={{ textAlign: "center", padding: "6px 0", borderRadius: 12, border: "none", cursor: "pointer", background: sameDay(day, ref) ? COLORS.surfaceLight : "transparent" }}>
+                <div style={{ fontSize: 9, color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase" }}>{DOW[i]}</div>
+                <div style={{ width: 30, height: 30, borderRadius: 15, display: "flex", alignItems: "center", justifyContent: "center", margin: "4px auto 0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : "transparent" }}>{day.getDate()}</div>
+                <div style={{ minHeight: 6, marginTop: 3 }}>{eventsOn(day).length > 0 && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: COLORS.textMuted }} />}</div>
+              </button>
+            ))}
+          </div>
+          <DayTimeline day={ref} items={eventsOn(ref)} ctx={ctx} summaries={summaries} onOpenItem={openItem} onChange={persist} />
+        </div>
+      </div>
     );
   }
 
   return (
     <div style={{ padding: "0 8px" }}>
       {header}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, height: "calc(100dvh - 270px)" }}>
-        <button onClick={() => step(-1)} style={sideArrow} title="Previous"><Chevron dir="left" /></button>
-        <div className="no-sb" style={{ flex: 1, minWidth: 0, height: "100%", overflowY: "auto", paddingRight: 2 }}>{body}</div>
-        <button onClick={() => step(1)} style={sideArrow} title="Next"><Chevron dir="right" /></button>
-      </div>
+      <div className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto", overflowX: "hidden", padding: "0 6px" }}>{body}</div>
     </div>
   );
 };

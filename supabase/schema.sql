@@ -10,9 +10,12 @@
 --   if it has `column_id`, on the calendar if it has `start_at`/`due_at`, and
 --   in a list if it has `list_id`. One item can satisfy several at once
 --   (a dated task is both a card and a calendar entry) — "one thing, 3 views".
--- - `parent_item_id` is the single mechanism for both a task's break-it-down
---   subtasks AND a checklist/list attached to a card or event: child items of
---   a parent. (Standalone lists still use the `list` table via `list_id`.)
+-- - List relationships are three-way:
+--     `list_id`        — this item is a line *in* a standing list (membership).
+--     `linked_list_ids` — standing lists this card/event *references* (array;
+--                        shown inline, many-to-many, one source of truth).
+--     `parent_item_id` — ad-hoc child checklist of an item, AND a task's
+--                        break-it-down subtasks (the same child-item mechanism).
 -- ============================================================================
 
 create extension if not exists "pgcrypto";   -- gen_random_uuid()
@@ -86,17 +89,6 @@ create table store (
 );
 
 -- ----------------------------------------------------------------------------
--- Recurrence (shared by tasks and events)
--- ----------------------------------------------------------------------------
-create table recurrence (
-  id         uuid primary key default gen_random_uuid(),
-  space_id   uuid not null references space(id) on delete cascade,
-  rule       text not null,        -- RRULE-style or structured string
-  until      timestamptz,
-  exceptions jsonb                 -- supports "this occurrence only" edits
-);
-
--- ----------------------------------------------------------------------------
 -- Item — the shared spine; one wide table discriminated by `type`.
 -- Type-specific columns are nullable. Light CHECKs guard the essentials
 -- without blocking fast capture (title + lane is always enough).
@@ -111,11 +103,13 @@ create table item (
   claimed_by    uuid references person(id) on delete set null,
   notes         text,
   emoji         text,
+  color         text,                               -- optional custom node color (hex); overrides the lane color for this item's wash/glow
   created_by    uuid references person(id) on delete set null,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
   deleted_at    timestamptz,                        -- soft-delete
-  parent_item_id uuid references item(id) on delete cascade,  -- subtask step / member of a list attached to this card or event
+  parent_item_id  uuid references item(id) on delete cascade,  -- subtask step / member of a list attached to this card or event
+  linked_list_ids uuid[] not null default '{}',                -- standing lists this card/event REFERENCES (shown inline; many-to-many, not membership)
 
   -- task fields
   due_at                timestamptz,
@@ -146,8 +140,10 @@ create table item (
   spent_at              timestamptz,
   from_shopping_item_id uuid references item(id) on delete set null,
 
-  -- recurrence (tasks/events)
-  recurrence_id uuid references recurrence(id) on delete set null,
+  -- recurrence (embedded; tasks/events). Occurrences are expanded on read, never stored.
+  recur_freq    text,                               -- 'daily' | 'weekly' | 'monthly' | null
+  recur_until   timestamptz,                        -- optional end of the series
+  recur_except  jsonb,                              -- array of 'YYYY-MM-DD' keys to skip ("this occurrence only")
 
   constraint item_event_has_start check (type <> 'event' or start_at is not null),
   constraint item_expense_has_amount check (type <> 'expense' or amount is not null)
@@ -159,6 +155,7 @@ create index item_list_idx       on item (list_id)            where deleted_at i
 create index item_due_idx        on item (due_at)             where deleted_at is null;
 create index item_start_idx      on item (start_at)           where deleted_at is null;
 create index item_parent_idx     on item (parent_item_id)     where deleted_at is null;
+create index item_linked_lists_idx on item using gin (linked_list_ids);
 
 -- Subtasks / break-it-down steps are NOT a separate table — they are child
 -- `item` rows (see `parent_item_id` above), the same mechanism as a checklist
@@ -234,9 +231,9 @@ create or replace function seed_space() returns trigger
 language plpgsql as $$
 begin
   insert into board_column (space_id, label, ord, role) values
-    (new.id, 'Today',   0, 'none'),
+    (new.id, 'Someday', 0, 'someday'),
     (new.id, 'Soon',    1, 'none'),
-    (new.id, 'Someday', 2, 'someday'),
+    (new.id, 'Today',   2, 'none'),
     (new.id, 'Done',    3, 'done');
   insert into list (space_id, name, emoji, has_stores, ord) values
     (new.id, 'Groceries',       '🛒', true,  0),
@@ -247,6 +244,34 @@ end; $$;
 
 create trigger trg_seed_space after insert on space
   for each row execute function seed_space();
+
+-- ----------------------------------------------------------------------------
+-- Onboarding — create a space + the two people for a brand-new auth user.
+-- security definer so it can bootstrap before any RLS-visible rows exist
+-- (chicken-and-egg: you need a person to have a space, and vice-versa).
+-- Idempotent: returns the caller's existing space if they already have one.
+-- ----------------------------------------------------------------------------
+create or replace function bootstrap_space(p_display_name text default null, p_color text default '#6BB5E8')
+returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_space uuid;
+begin
+  if v_uid is null then raise exception 'not authenticated'; end if;
+
+  select space_id into v_space from person where auth_user_id = v_uid limit 1;
+  if v_space is not null then return v_space; end if;
+
+  insert into space (name) values ('Our Space') returning id into v_space;
+  insert into person (space_id, slot, display_name, lane_color, auth_user_id)
+    values (v_space, 'partner_a', coalesce(nullif(p_display_name, ''), 'Me'), coalesce(p_color, '#6BB5E8'), v_uid);
+  insert into person (space_id, slot, display_name, lane_color)
+    values (v_space, 'partner_b', 'Partner', '#B98CE8');
+  return v_space;
+end; $$;
+
+grant execute on function bootstrap_space(text, text) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Row-Level Security — everything is scoped to the caller's space
@@ -262,7 +287,6 @@ alter table person            enable row level security;
 alter table board_column      enable row level security;
 alter table list              enable row level security;
 alter table store             enable row level security;
-alter table recurrence        enable row level security;
 alter table item              enable row level security;
 alter table bill              enable row level security;
 alter table savings_goal      enable row level security;
@@ -276,7 +300,6 @@ create policy sp_person on person           using (space_id = app_space_id()) wi
 create policy sp_col on board_column        using (space_id = app_space_id()) with check (space_id = app_space_id());
 create policy sp_list on list               using (space_id = app_space_id()) with check (space_id = app_space_id());
 create policy sp_store on store             using (space_id = app_space_id()) with check (space_id = app_space_id());
-create policy sp_rec on recurrence          using (space_id = app_space_id()) with check (space_id = app_space_id());
 create policy sp_item on item               using (space_id = app_space_id()) with check (space_id = app_space_id());
 create policy sp_bill on bill               using (space_id = app_space_id()) with check (space_id = app_space_id());
 create policy sp_goal on savings_goal       using (space_id = app_space_id()) with check (space_id = app_space_id());

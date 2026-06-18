@@ -1,206 +1,114 @@
-import { COLORS } from "../theme";
+import { useState, useEffect } from "react";
+import { COLORS, TYPE, SPACE } from "../theme";
+import { Card, SectionLabel, ProgressBar, EmptyState } from "../components/primitives.jsx";
+import { getBootstrap, getFinance } from "../lib/data.js";
+import { SLOTS } from "../lib/lanes.js";
 
-const TwoCentsView = () => {
-  const bills = [
-    { name: "Rent", amount: "$1,200", freq: "Monthly", due: "1st Jul" },
-    { name: "Council tax", amount: "$180", freq: "Monthly", due: "28th Jun" },
-    { name: "Netflix", amount: "$10.99", freq: "Monthly", due: "3rd Jul" },
-    { name: "Electricity", amount: "~$85", freq: "Monthly", due: "15th Jul" },
-  ];
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const money = (n) => {
+  const v = Number(n) || 0;
+  return "$" + v.toLocaleString(undefined, { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
+};
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const dueLabel = (raw) => {
+  if (!raw) return "";
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? String(raw) : `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+};
 
-  const goals = [
-    { name: "Japan 2027 🇯🇵", target: 4000, saved: 1240, emoji: "🇯🇵" },
-    { name: "New sofa", target: 800, saved: 350, emoji: "🛋️" },
-  ];
+const pad = { padding: "0 16px" };
+const linkBtn = { background: "none", border: "none", color: COLORS.accent, cursor: "pointer", font: "inherit", textDecoration: "underline" };
+
+const TwoCentsView = ({ isDesktop }) => {
+  const [ctx, setCtx] = useState(null);
+  const [fin, setFin] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  function load() {
+    setError(false);
+    Promise.all([getBootstrap(), getFinance()])
+      .then(([b, f]) => { setCtx(b); setFin(f); setLoading(false); })
+      .catch(() => { setError(true); setLoading(false); });
+  }
+  useEffect(() => { load(); }, []);
+
+  if (loading) return <div style={pad}><EmptyState>Counting the pennies…</EmptyState></div>;
+  if (error) return (
+    <div style={pad}>
+      <EmptyState style={{ fontStyle: "normal" }}>
+        Couldn’t load your finances.{" "}
+        <button onClick={load} className="focusable" style={linkBtn}>Try again</button>
+      </EmptyState>
+    </div>
+  );
+
+  // Owe Snap — derive the who-owes-who line from the viewer's perspective.
+  const people = ctx?.people;
+  const viewerSlot = ctx?.viewerSlot || SLOTS.A;
+  const net = fin?.balance?.net || 0; // net > 0 ⇒ partner_b owes partner_a
+  const amt = Math.abs(net);
+  const name = (slot) => people?.[slot]?.display_name || (slot === SLOTS.A ? "Partner A" : "Partner B");
+  let oweTitle, oweSub;
+  if (amt < 0.005) {
+    oweTitle = "All square";
+    oweSub = "Nobody owes anybody. Rare.";
+  } else {
+    const creditor = net > 0 ? SLOTS.A : SLOTS.B;
+    const debtor = net > 0 ? SLOTS.B : SLOTS.A;
+    if (viewerSlot === debtor) { oweTitle = `You owe ${money(amt)}`; oweSub = `to ${name(creditor)}`; }
+    else { oweTitle = `You’re owed ${money(amt)}`; oweSub = `from ${name(debtor)}`; }
+  }
+
+  const bills = fin?.bills || [];
+  const goals = fin?.goals || [];
+
+  const billsSection = (
+    <section style={{ flex: 1, minWidth: 0, width: "100%" }}>
+      <SectionLabel style={{ marginBottom: SPACE[3] }}>Monthly outgoings</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: SPACE[2] }}>
+        {bills.length ? bills.map((b) => (
+          <Card key={b.id}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE[3] }}>
+              <div>
+                <div style={{ ...TYPE.title, color: COLORS.textPrimary }}>{b.name}</div>
+                <div style={{ ...TYPE.caption, color: COLORS.textMuted, marginTop: 2 }}>{cap(b.frequency)} · due {dueLabel(b.next_due_at)}</div>
+              </div>
+              <div style={{ ...TYPE.title, color: COLORS.textPrimary }}>{money(b.amount)}</div>
+            </div>
+          </Card>
+        )) : <EmptyState style={{ padding: "20px 12px" }}>No bills yet. Blissful.</EmptyState>}
+      </div>
+    </section>
+  );
+
+  const goalsSection = (
+    <section style={{ flex: 1, minWidth: 0, width: "100%" }}>
+      <SectionLabel style={{ marginBottom: SPACE[3] }}>{"Fund & Games"}</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: SPACE[2] }}>
+        {goals.length ? goals.map((g) => (
+          <Card key={g.id}>
+            <span style={{ ...TYPE.title, color: COLORS.textPrimary }}>{g.emoji ? g.emoji + " " : ""}{g.name}</span>
+            <ProgressBar done={Number(g.saved) || 0} total={Number(g.target) || 0} label={`${money(g.saved)} / ${money(g.target)}`} />
+          </Card>
+        )) : <EmptyState style={{ padding: "20px 12px" }}>No savings goals yet. The sofa fund won’t start itself.</EmptyState>}
+      </div>
+    </section>
+  );
 
   return (
-    <div style={{ padding: "0 16px" }}>
-      {/* Balance */}
-      <div
-        style={{
-          padding: "16px 18px",
-          borderRadius: 16,
-          background: COLORS.surface,
-          marginBottom: 24,
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            fontFamily: "'DM Sans', sans-serif",
-            color: COLORS.textSecondary,
-            marginBottom: 6,
-            textTransform: "uppercase",
-            letterSpacing: 0.8,
-          }}
-        >
-          Owe Snap
-        </div>
-        <div
-          style={{
-            fontFamily: "'Fraunces', serif",
-            fontSize: 20,
-            fontWeight: 400,
-            color: COLORS.textPrimary,
-            marginBottom: 4,
-          }}
-        >
-          You owe $12.50
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            fontFamily: "'DM Sans', sans-serif",
-            color: COLORS.textMuted,
-          }}
-        >
-          from last week's groceries
-        </div>
-      </div>
-
-      {/* Bills */}
-      <div style={{ marginBottom: 24 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontFamily: "'DM Sans', sans-serif",
-            color: COLORS.textSecondary,
-            textTransform: "uppercase",
-            letterSpacing: 0.8,
-            marginBottom: 10,
-          }}
-        >
-          Monthly outgoings
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {bills.map((bill, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "12px 14px",
-                borderRadius: 12,
-                background: COLORS.surface,
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: COLORS.textPrimary,
-                  }}
-                >
-                  {bill.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.textMuted,
-                    fontFamily: "'DM Sans', sans-serif",
-                    marginTop: 2,
-                  }}
-                >
-                  {bill.freq} · due {bill.due}
-                </div>
-              </div>
-              <div
-                style={{
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: COLORS.textPrimary,
-                }}
-              >
-                {bill.amount}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Goals */}
-      <div>
-        <div
-          style={{
-            fontSize: 11,
-            fontFamily: "'DM Sans', sans-serif",
-            color: COLORS.textSecondary,
-            textTransform: "uppercase",
-            letterSpacing: 0.8,
-            marginBottom: 10,
-          }}
-        >
-          Fund & Games
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {goals.map((goal, i) => (
-            <div
-              key={i}
-              style={{
-                padding: "14px 16px",
-                borderRadius: 14,
-                background: COLORS.surface,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 8,
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: 14,
-                    fontWeight: 500,
-                    color: COLORS.textPrimary,
-                  }}
-                >
-                  {goal.name}
-                </span>
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: COLORS.textSecondary,
-                    fontFamily: "'DM Sans', sans-serif",
-                  }}
-                >
-                  ${goal.saved} / ${goal.target.toLocaleString()}
-                </span>
-              </div>
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 3,
-                  background: COLORS.surfaceLight,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${(goal.saved / goal.target) * 100}%`,
-                    height: "100%",
-                    borderRadius: 3,
-                    background: `linear-gradient(90deg, ${COLORS.accent}, ${COLORS.accentGlow})`,
-                    transition: "width 0.5s ease",
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+    <div style={pad}>
+      <Card style={{ marginBottom: SPACE[6], textAlign: "center", padding: `${SPACE[4]}px` }}>
+        <SectionLabel style={{ marginBottom: SPACE[2] }}>Owe Snap</SectionLabel>
+        <div style={{ ...TYPE.display, fontSize: 22, color: COLORS.textPrimary, marginBottom: 4 }}>{oweTitle}</div>
+        <div style={{ ...TYPE.caption, color: COLORS.textMuted }}>{oweSub}</div>
+      </Card>
+      <div style={{ display: "flex", flexDirection: isDesktop ? "row" : "column", gap: SPACE[6], alignItems: "flex-start" }}>
+        {billsSection}
+        {goalsSection}
       </div>
     </div>
   );
 };
-
-// Phone-first; expands to a desktop layout at >= 760px.
 
 export default TwoCentsView;

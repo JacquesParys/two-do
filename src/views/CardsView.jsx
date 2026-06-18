@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor,
   useSensor, useSensors, useDroppable, closestCorners,
@@ -9,11 +9,32 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha } from "../theme";
 import {
-  Card, LaneBadge, SleepsChip, ProgressBar, Chip, SectionLabel, PillButton, EmptyState,
+  Card, LaneBadge, SleepsChip, ProgressBar, Chip, SectionLabel, PillButton, EmptyState, CalendarIcon, LinkedListChips,
 } from "../components/primitives.jsx";
 import { adaptCard } from "./helpers.js";
-import { getBootstrap, listColumns, listCards, getSubtaskProgress, moveCards, subscribe } from "../lib/data.js";
+import { getBootstrap, listColumns, listCards, getSubtaskProgress, getListSummaries, moveCards, subscribe } from "../lib/data.js";
+import { SLOTS } from "../lib/lanes.js";
 import ColumnsEditor from "../ColumnsEditor.jsx";
+
+// Very faint per-column "add a card here" affordance; brightens on hover.
+const AddCard = ({ onClick, style }) => (
+  <button
+    onClick={onClick}
+    aria-label="Add a card to this column"
+    className="pressable focusable tap"
+    style={{
+      ...TYPE.meta,
+      width: "100%", marginTop: SPACE[2], padding: `${SPACE[2]}px`,
+      borderRadius: RADIUS.md, border: `1px dashed ${COLORS.surfaceLight}`,
+      background: "transparent", color: COLORS.textMuted, cursor: "pointer",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+      opacity: 0.55,
+      ...style,
+    }}
+  >
+    + Add
+  </button>
+);
 
 const fadeX = {
   WebkitMaskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)",
@@ -28,9 +49,9 @@ function emptyLine(role) {
 }
 
 function CardBody({ display, dragging }) {
-  const { title, laneLabel, laneColor, due, subtasks, exciting, emoji, sleeps } = display;
+  const { title, laneLabel, laneColor, nodeColor, due, subtasks, exciting, emoji, sleeps, proximity, completion } = display;
   return (
-    <Card stripeColor={laneColor} exciting={exciting} style={dragging ? { boxShadow: SHADOW.lg } : undefined}>
+    <Card stripeColor={nodeColor} exciting={exciting} proximity={proximity} completion={completion} style={dragging ? { boxShadow: SHADOW.lg } : undefined}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2] }}>
         {emoji && <span style={{ fontSize: 16, lineHeight: 1.2 }}>{emoji}</span>}
         <span style={{ ...TYPE.title, color: COLORS.textPrimary, flex: 1 }}>{title}</span>
@@ -39,14 +60,15 @@ function CardBody({ display, dragging }) {
       {(due || sleeps) && (
         <div style={{ display: "flex", alignItems: "center", gap: SPACE[3], marginTop: SPACE[2] }}>
           {due && (
-            <span style={{ ...TYPE.meta, color: COLORS.textSecondary, display: "inline-flex", alignItems: "center", gap: 4 }}>
-              🗓 {due}
+            <span style={{ ...TYPE.meta, color: COLORS.textSecondary, display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <CalendarIcon /> {due}
             </span>
           )}
           {sleeps && <SleepsChip days={sleeps} />}
         </div>
       )}
       {subtasks && <ProgressBar done={subtasks.done} total={subtasks.total} />}
+      <LinkedListChips lists={display.linkedLists} />
     </Card>
   );
 }
@@ -83,12 +105,9 @@ function Column({ id, empty, children }) {
       style={{
         minHeight: 48,
         borderRadius: RADIUS.md,
-        outline: isOver ? `2px dashed ${withAlpha(COLORS.accentGlow, 0.5)}` : "none",
-        outlineOffset: 4,
-        // Persistent, faint drop affordance for empty columns.
-        border: empty ? `1px dashed ${COLORS.surfaceLight}` : "1px solid transparent",
-        background: empty ? withAlpha(COLORS.surface, 0.35) : "transparent",
-        transition: "outline 120ms ease",
+        // Faded fill marks the drop target (on hover) and empty columns — no dashed lines.
+        background: isOver ? withAlpha(COLORS.accent, 0.1) : empty ? withAlpha(COLORS.surface, 0.35) : "transparent",
+        transition: "background 120ms ease",
       }}
     >
       {children}
@@ -104,6 +123,7 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
   const [activeId, setActiveId] = useState(null);
   const [activeCol, setActiveCol] = useState(0);
   const [showCols, setShowCols] = useState(false);
+  const [summaries, setSummaries] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -113,11 +133,11 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
   async function load() {
     try {
       setError(false);
-      const [boot, cols, items] = await Promise.all([getBootstrap(), listColumns(), listCards()]);
+      const [boot, cols, items, sums] = await Promise.all([getBootstrap(), listColumns(), listCards(), getListSummaries()]);
       // Attach subtask progress (done/total over child items) for the card footer.
       const progress = await getSubtaskProgress(items.map((i) => i.id));
       items.forEach((it) => { it.subtasks = progress[it.id] || null; });
-      setCtx(boot); setColumns(cols); setCards(items);
+      setCtx(boot); setColumns(cols); setCards(items); setSummaries(sums);
       const grp = {};
       cols.forEach((c) => { grp[c.id] = []; });
       items.slice().sort((a, b) => (a.ord ?? 0) - (b.ord ?? 0)).forEach((it) => { (grp[it.column_id] = grp[it.column_id] || []).push(it.id); });
@@ -173,12 +193,22 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
     onChanged?.();
   }
 
-  const renderCard = (id) => <SortableCard key={id} id={id} display={adaptCard(cardById[id], ctx)} onOpen={() => onOpenItem?.(cardById[id])} />;
+  const renderCard = (id) => <SortableCard key={id} id={id} display={adaptCard(cardById[id], ctx, summaries)} onOpen={() => onOpenItem?.(cardById[id])} />;
+
+  // Open the editor for a new card pre-placed in this column; default its lane
+  // to the active lane filter when one is set, else shared.
+  const addCardTo = (colId) =>
+    onOpenItem?.({
+      type: "task",
+      kind: "routine",
+      lane: laneFilter !== "all" ? laneFilter : SLOTS.SHARED,
+      column_id: colId,
+    });
 
   const dnd = (children) => (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
       {children}
-      <DragOverlay>{activeId ? <CardBody display={adaptCard(cardById[activeId], ctx)} dragging /> : null}</DragOverlay>
+      <DragOverlay>{activeId ? <CardBody display={adaptCard(cardById[activeId], ctx, summaries)} dragging /> : null}</DragOverlay>
     </DndContext>
   );
 
@@ -186,22 +216,28 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
   if (!loading && !error) {
     if (isDesktop) {
       board = dnd(
-        <div style={{ display: "flex", gap: SPACE[4], alignItems: "flex-start" }}>
-          {columns.map((col) => {
+        <div style={{ display: "flex", gap: SPACE[4], alignItems: "stretch" }}>
+          {columns.map((col, ci) => {
             const ids = vis(containers[col.id] || []);
             return (
-              <div key={col.id} style={{ flex: "1 1 0", minWidth: 240 }}>
-                <SectionLabel style={{ padding: "4px 4px 12px" }}>
-                  {col.label} <span style={{ opacity: 0.5 }}>{ids.length}</span>
-                </SectionLabel>
-                <Column id={col.id} empty={ids.length === 0}>
-                  <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                    {ids.length
-                      ? ids.map(renderCard)
-                      : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
-                  </SortableContext>
-                </Column>
-              </div>
+              <Fragment key={col.id}>
+                {ci > 0 && (
+                  <div aria-hidden style={{ width: 1, alignSelf: "stretch", background: COLORS.surfaceLight, flexShrink: 0 }} />
+                )}
+                <div style={{ flex: "1 1 0", minWidth: 240 }}>
+                  <SectionLabel style={{ padding: "4px 4px 12px" }}>
+                    {col.label} <span style={{ opacity: 0.5 }}>{ids.length}</span>
+                  </SectionLabel>
+                  <Column id={col.id} empty={ids.length === 0}>
+                    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                      {ids.length
+                        ? ids.map(renderCard)
+                        : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
+                    </SortableContext>
+                  </Column>
+                  <AddCard onClick={() => addCardTo(col.id)} />
+                </div>
+              </Fragment>
             );
           })}
         </div>
@@ -225,6 +261,7 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
               </SortableContext>
             </Column>
           )}
+          {col && <AddCard onClick={() => addCardTo(col.id)} />}
           <p style={{ ...TYPE.caption, color: COLORS.textMuted, textAlign: "center", marginTop: SPACE[4] }}>
             Drag to reorder · move between columns on a wider screen or via a card
           </p>

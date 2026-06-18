@@ -16,7 +16,7 @@ export const COLORS = {
   textMuted: "#7C8E88", // nudged lighter than the old #5F706A for AA on bg
   laneMe: "#6BB5E8",
   laneYou: "#B98CE8",
-  laneUs: "#7A8E88",
+  laneUs: "#E8896B", // coral — the shared "Us" lane
   green: "#8FBFA3",
   greenMuted: "rgba(143,191,163,0.16)",
 };
@@ -56,6 +56,9 @@ export const SHADOW = {
   lg: "0 10px 26px rgba(0,0,0,0.45)",
   glow: `0 0 0 1px ${COLORS.accentGlow}55, 0 4px 18px rgba(232,137,107,0.22)`,
 };
+
+// Build a layered glow shadow from any color (exciting items glow in their node color).
+export const glow = (color) => `0 0 0 1px ${withAlpha(color, 0.4)}, 0 4px 18px ${withAlpha(color, 0.26)}`;
 
 // Motion tokens. Durations in ms; pair with EASE. Honour reduced-motion via
 // the `.motion` className (see injected stylesheet).

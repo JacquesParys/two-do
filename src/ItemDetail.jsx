@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { COLORS } from "./theme";
 import { laneLabel, SLOTS } from "./lib/lanes.js";
-import { createItem, updateItem, deleteItem, listColumns, listStores, createStore } from "./lib/data.js";
+import { createItem, updateItem, deleteItem, listColumns, listStores, createStore, listLists, listItemsForList } from "./lib/data.js";
 
 const EMOJI = ["💕", "🎉", "🎸", "✈️", "🎂", "🍷", "🏖️", "🎬", "⚽", "🎄", "🎁", "🌟", "🍕", "🐱", "🏡", "💸"];
+const SWATCHES = ["#6BB5E8", "#7AA0E8", "#8FBFA3", "#E8C16B", "#E8896B", "#E86B9B", "#B98CE8", "#9B8CE8", "#C98B6B"];
+const swatch = { width: 30, height: 30, borderRadius: 15, cursor: "pointer", flexShrink: 0, padding: 0 };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const startOfWeek = (d) => { const x = new Date(d); const off = (x.getDay() + 6) % 7; x.setDate(x.getDate() - off); x.setHours(0, 0, 0, 0); return x; };
@@ -79,11 +81,31 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
   const [form, setForm] = useState(() => ({ ...item }));
   const [columns, setColumns] = useState([]);
   const [stores, setStores] = useState([]);
+  const [lists, setLists] = useState([]);
+  const [linkedGroups, setLinkedGroups] = useState([]);
   const [shown, setShown] = useState(false);
 
   useEffect(() => { requestAnimationFrame(() => setShown(true)); }, []);
   useEffect(() => { if (form.type === "task") listColumns().then(setColumns); }, [form.type]);
   useEffect(() => { if (form.type === "shopping") listStores().then(setStores); }, [form.type]);
+  useEffect(() => { if (form.type === "task" || form.type === "event") listLists().then(setLists); }, [form.type]);
+
+  const linkedKey = (form.linked_list_ids || []).join(",");
+  async function loadLinked() {
+    const ids = form.linked_list_ids || [];
+    const arrs = await Promise.all(ids.map((id) => listItemsForList(id)));
+    setLinkedGroups(ids.map((id, i) => ({ id, items: arrs[i] })));
+  }
+  useEffect(() => { loadLinked(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [linkedKey]);
+
+  function toggleListLink(id) {
+    const cur = form.linked_list_ids || [];
+    set("linked_list_ids", cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  }
+  async function toggleLinked(it) {
+    await updateItem(it.id, { checked: !it.checked, checked_at: !it.checked ? new Date().toISOString() : null });
+    loadLinked();
+  }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const viewer = ctx?.viewerSlot || SLOTS.A;
@@ -122,8 +144,23 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 18px 28px" }}>
           <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" autoFocus style={{ ...input, fontSize: 18, fontWeight: 500 }} />
 
+          <Label>Type</Label>
+          <Segmented
+            options={[{ value: "task", label: "Task" }, { value: "event", label: "Event" }, { value: "shopping", label: "Shopping" }, { value: "expense", label: "Expense" }]}
+            value={form.type}
+            onChange={(v) => set("type", v)}
+          />
+
           <Label>Lane</Label>
           <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} />
+
+          <Label>Color</Label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <button onClick={() => set("color", null)} className="focusable" title="Auto (lane color)" style={{ ...swatch, width: "auto", height: 30, padding: "0 12px", borderRadius: 15, background: COLORS.surface, color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 500, border: !form.color ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}` }}>Auto</button>
+            {SWATCHES.map((c) => (
+              <button key={c} onClick={() => set("color", c)} className="focusable" title={c} style={{ ...swatch, background: c, border: "none", outline: form.color === c ? `2px solid ${COLORS.textPrimary}` : "none", outlineOffset: 2 }} />
+            ))}
+          </div>
 
           {form.type === "shopping" && (
             <>
@@ -139,7 +176,20 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
               <Label>{form.type === "event" ? "When" : "Due"}</Label>
               <DatePicker value={form[dateField]} onChange={(v) => set(dateField, v)} />
               {hasDate && (
-                <Row><Toggle label="Show countdown (sleeps)" on={!!form.countdown} onClick={() => set("countdown", !form.countdown)} /></Row>
+                <>
+                  <Label>Repeats</Label>
+                  <Segmented
+                    options={[{ value: "", label: "None" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }]}
+                    value={form.recur_freq ?? ""}
+                    onChange={(v) => set("recur_freq", v || null)}
+                  />
+                  {form.recur_freq && (
+                    <>
+                      <Label>Until (optional)</Label>
+                      <DatePicker value={form.recur_until} onChange={(v) => set("recur_until", v)} />
+                    </>
+                  )}
+                </>
               )}
             </>
           )}
@@ -148,6 +198,43 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             <>
               <Label>Column</Label>
               <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} />
+            </>
+          )}
+
+          {(form.type === "task" || form.type === "event") && (
+            <>
+              <Label>Linked lists</Label>
+              {lists.length === 0 ? (
+                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: COLORS.textMuted }}>No lists yet.</div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {lists.map((l) => {
+                    const on = (form.linked_list_ids || []).includes(l.id);
+                    return <button key={l.id} onClick={() => toggleListLink(l.id)} style={chip(on)}>{l.emoji ? l.emoji + " " : ""}{l.name}</button>;
+                  })}
+                </div>
+              )}
+              {linkedGroups.map((g) => {
+                const meta = lists.find((l) => l.id === g.id);
+                return (
+                  <div key={g.id} style={{ marginTop: 12 }}>
+                    <Label>{meta ? `${meta.emoji ? meta.emoji + " " : ""}${meta.name}` : "List"}</Label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {g.items.length === 0 ? (
+                        <div style={{ fontFamily: "'Fraunces', serif", fontStyle: "italic", fontSize: 13, color: COLORS.textMuted, padding: "4px 2px" }}>This list is empty.</div>
+                      ) : g.items.map((it) => (
+                        <button key={it.id} onClick={() => toggleLinked(it)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, background: COLORS.surface, border: "none", cursor: "pointer", textAlign: "left" }}>
+                          <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, border: it.checked ? "none" : `2px solid ${COLORS.textMuted}`, background: it.checked ? COLORS.accent : "transparent", color: COLORS.bg }}>{it.checked ? "✓" : ""}</span>
+                          <span style={{ flex: 1, fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: it.checked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: it.checked ? "line-through" : "none" }}>
+                            {it.title}{it.qty && <span style={{ color: COLORS.textMuted, marginLeft: 6, fontSize: 12 }}>{it.qty}</span>}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <LinkedAdd listId={g.id} lane={form.lane} spaceId={ctx?.space?.id} createdBy={ctx?.people?.[viewer]?.id ?? null} onAdded={loadLinked} />
+                  </div>
+                );
+              })}
             </>
           )}
 
@@ -173,6 +260,9 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             </>
           )}
 
+          {hasDate && (form.type === "task" || form.type === "event") && (
+            <Row><Toggle label="Show countdown (sleeps)" on={!!form.countdown} onClick={() => set("countdown", !form.countdown)} /></Row>
+          )}
           {form.type === "task" && (
             <Row><Toggle label="Keep reminding me" on={!!form.persistent_until_done} onClick={() => set("persistent_until_done", !form.persistent_until_done)} /></Row>
           )}
@@ -180,6 +270,23 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           {!isNew && <button onClick={remove} style={deleteBtn}>Delete</button>}
         </div>
       </div>
+    </div>
+  );
+}
+
+function LinkedAdd({ listId, lane, spaceId, createdBy, onAdded }) {
+  const [val, setVal] = useState("");
+  const submit = async () => {
+    const t = val.trim();
+    if (!t) return;
+    await createItem({ type: "shopping", title: t, list_id: listId, lane: lane || "shared", kind: "routine", checked: false, space_id: spaceId, created_by: createdBy });
+    setVal("");
+    onAdded?.();
+  };
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Add an item…" style={{ ...input, marginBottom: 0, flex: 1, padding: "8px 12px" }} />
+      <button onClick={submit} className="focusable" style={{ ...iconBtn, color: COLORS.accent, fontWeight: 600 }}>Add</button>
     </div>
   );
 }

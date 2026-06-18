@@ -250,7 +250,11 @@ Named lists appear as **tabs** within the Lists view. Default lists might includ
 
 Tapping a tab shows that list's items.
 
-**Standalone vs attached lists.** The tabs above are *standalone* lists (space-level containers; an item joins one via its `listId`). A list can also be *attached* to a specific card or event — e.g. a packing list on a trip event, or a checklist on a task. An attached list is not a tab here; it's the card/event's **child items** (the same mechanism as a task's subtasks) and is shown on that item, not in this view. So "Lists" the tab = standalone lists; a list "tied to" something lives with that something.
+**Standalone, linked, and attached lists.** The tabs above are *standalone* lists (space-level containers; an item joins one via its `listId`). There are two ways something can be "tied to" a card or event:
+- **Linked** (`linkedListId`) — a card/event *references* an existing standing list, shown inline on it. The list stays the one source of truth (check-offs sync everywhere), nothing is duplicated. Use this for "go do the groceries" against the standing Groceries list.
+- **Attached** (`parentItemId` child items) — an *ad-hoc* checklist that only exists on that item (e.g. a packing list for one trip), the same mechanism as a task's subtasks.
+
+Either way it's shown on the item, not as a tab here. So "Lists" the tab = standalone lists; a linked or attached list lives with its card/event.
 
 ### List items
 

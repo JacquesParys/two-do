@@ -1,12 +1,40 @@
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW } from "../theme";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow } from "../theme";
+
+// How imminent an item is (0–1): fills as its start/due time approaches, full
+// at or past it. Used to grow the lane-fill backdrop. Pure-ish (reads now).
+export function timeProximity(item) {
+  const anchor = item?.start_at || item?.due_at;
+  if (!anchor) return 0;
+  const ms = new Date(anchor).getTime() - Date.now();
+  if (ms <= 0) return 1;
+  const WINDOW = 3 * 24 * 3600 * 1000; // build gradually over ~3 days
+  const raw = Math.max(0, Math.min(1, 1 - ms / WINDOW));
+  return raw * raw; // ease-in: stays subtle until the time is close
+}
+
+// Two additive lane-colored layers that fill a card left→right: one from
+// time-proximity, one from completion. Overlap deepens the color. Render inside
+// a position:relative + overflow:hidden parent, behind the content.
+export const LaneFill = ({ color, proximity = 0, completion = 0 }) => (
+  <>
+    <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.max(8, proximity * 100)}%`, background: `linear-gradient(to right, ${withAlpha(color, 0.3)}, ${withAlpha(color, 0.05)} 78%, transparent)`, pointerEvents: "none", transition: "width 500ms ease" }} />
+    {completion > 0 && (
+      <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${completion * 100}%`, background: `linear-gradient(to right, ${withAlpha(color, 0.24)}, ${withAlpha(color, 0.04)} 80%, transparent)`, pointerEvents: "none", transition: "width 500ms ease" }} />
+    )}
+  </>
+);
 
 // ---------------------------------------------------------------------------
-// Card — the "layered & tactile" surface: gradient lift off the bg, a
-// lane-colored edge-stripe, layered shadow for depth, and the coral glow
-// reserved for exciting items. The one surface reused across every view.
+// Card — the "layered & tactile" surface: gradient lift off the bg, a soft
+// lane-colored wash fading in from the left edge, layered shadow for depth,
+// and the coral glow reserved for exciting items. One surface, every view.
+// `laneColor` (alias: `stripeColor`) tints the wash. Pass `proximity`/`completion`
+// (0–1) to turn the static wash into the growing two-layer LaneFill.
 // ---------------------------------------------------------------------------
-export const Card = ({ stripeColor, exciting, onClick, className = "", style, children, ...rest }) => {
+export const Card = ({ laneColor, stripeColor, exciting, proximity, completion, onClick, className = "", style, children, ...rest }) => {
   const interactive = !!onClick;
+  const lane = laneColor ?? stripeColor;
+  const hasFill = proximity != null || completion != null;
   return (
     <div
       onClick={onClick}
@@ -22,25 +50,29 @@ export const Card = ({ stripeColor, exciting, onClick, className = "", style, ch
         position: "relative",
         borderRadius: RADIUS.lg,
         background: `linear-gradient(160deg, ${COLORS.bgRaised}, ${COLORS.surface})`,
-        boxShadow: exciting ? SHADOW.glow : SHADOW.md,
-        border: exciting ? `1px solid ${COLORS.accentGlow}55` : "1px solid transparent",
-        padding: `${SPACE[3]}px ${SPACE[4]}px ${SPACE[3]}px ${SPACE[4] + SPACE[2]}px`,
+        boxShadow: exciting ? glow(lane || COLORS.accentGlow) : SHADOW.md,
+        border: exciting ? `1px solid ${withAlpha(lane || COLORS.accentGlow, 0.45)}` : "1px solid transparent",
+        padding: `${SPACE[3]}px ${SPACE[4]}px`,
+        boxSizing: "border-box",
         overflow: "hidden",
         cursor: interactive ? "pointer" : "default",
         ...style,
       }}
       {...rest}
     >
-      {stripeColor && (
-        <span
-          aria-hidden
-          style={{
-            position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
-            background: stripeColor,
-          }}
-        />
-      )}
-      {children}
+      {lane && (hasFill
+        ? <LaneFill color={lane} proximity={proximity || 0} completion={completion || 0} />
+        : (
+          <span
+            aria-hidden
+            style={{
+              position: "absolute", left: 0, top: 0, bottom: 0, width: "30%",
+              background: `linear-gradient(to right, ${withAlpha(lane, 0.26)}, transparent)`,
+              pointerEvents: "none",
+            }}
+          />
+        ))}
+      <div style={{ position: "relative" }}>{children}</div>
     </div>
   );
 };
@@ -87,6 +119,22 @@ export const SegmentedTabs = ({ options, value, onChange, variant = "solid", sty
     ))}
   </div>
 );
+
+// Linked-list indicator chips — "🛒 Groceries 3/8" — for a card/event that
+// references standing lists. `lists` = [{ id, name, emoji, done, total }].
+export const LinkedListChips = ({ lists, style }) => {
+  if (!lists || !lists.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: SPACE[2], ...style }}>
+      {lists.map((l) => (
+        <span key={l.id} style={{ ...TYPE.caption, display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: RADIUS.sm, background: COLORS.surfaceLight, color: COLORS.textSecondary }}>
+          <span>{l.emoji || "🛒"}</span>{l.name}
+          {l.total > 0 && <span style={{ color: COLORS.textMuted }}>{l.done}/{l.total}</span>}
+        </span>
+      ))}
+    </div>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // SectionLabel — the uppercase muted group header (was copied 3-4x).
@@ -158,20 +206,33 @@ export const LaneBadge = ({ lane, label, color }) => {
   );
 };
 
+// Inline SVG icons (currentColor, size-matched) — never emoji, which render as
+// tofu boxes on some systems. Used for structural UI chrome across views.
+export const CalendarIcon = ({ size = 13 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
+    <rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
+  </svg>
+);
+export const MoonIcon = ({ size = 12 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden style={{ flexShrink: 0 }}>
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+  </svg>
+);
+
 export const SleepsChip = ({ days }) => (
   <span
     style={{
       ...TYPE.caption,
-      display: "inline-flex", alignItems: "center", gap: 3,
+      display: "inline-flex", alignItems: "center", gap: 4,
       padding: "2px 7px", borderRadius: RADIUS.sm,
       color: COLORS.accent, background: COLORS.accentMuted,
     }}
   >
-    ◷ {days} sleeps
+    <MoonIcon /> {days} sleeps
   </span>
 );
 
-export const ProgressBar = ({ done, total }) => {
+export const ProgressBar = ({ done, total, label }) => {
   const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
   return (
     <div
@@ -187,7 +248,7 @@ export const ProgressBar = ({ done, total }) => {
           style={{ width: `${pct}%`, height: "100%", borderRadius: RADIUS.pill, background: COLORS.accent, transition: "width 320ms cubic-bezier(0.22,0.61,0.36,1)" }}
         />
       </div>
-      <span style={{ ...TYPE.caption, color: COLORS.textMuted }}>{done}/{total}</span>
+      <span style={{ ...TYPE.caption, color: COLORS.textMuted, whiteSpace: "nowrap" }}>{label ?? `${done}/${total}`}</span>
     </div>
   );
 };

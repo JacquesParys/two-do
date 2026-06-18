@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
-import { COLORS } from "../theme";
-import { LaneBadge } from "../components/primitives.jsx";
-import { getBootstrap, listLists, listListItems, listStores, updateItem, createList, createStore, subscribe } from "../lib/data.js";
+import { COLORS, TYPE, SPACE, RADIUS, withAlpha } from "../theme";
+import { LaneBadge, Card, Chip, SectionLabel, EmptyState } from "../components/primitives.jsx";
+import { getBootstrap, listLists, listListItems, listStores, updateItem, deleteItem, createList, createStore, subscribe } from "../lib/data.js";
 import { laneLabel as resolveLaneLabel, laneColor as resolveLaneColor } from "../lib/lanes.js";
 
 const STORE_COLORS = { "No Frills": "#FFB300", "Grace Meat": "#E57373", Metro: "#1E88E5", "Home Depot": "#F57C00" };
 function StoreBadge({ store }) {
   if (!store) return null;
   const c = STORE_COLORS[store] || COLORS.textSecondary;
-  return <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 8, fontSize: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: c, background: `${c}20`, letterSpacing: 0.2 }}>{store}</span>;
+  return <span style={{ ...TYPE.caption, display: "inline-block", padding: "2px 7px", borderRadius: RADIUS.sm, color: c, background: withAlpha(c, 0.13), letterSpacing: 0.2 }}>{store}</span>;
 }
 
 function InlineAdd({ placeholder, label, onAdd }) {
@@ -29,8 +29,6 @@ function InlineAdd({ placeholder, label, onAdd }) {
   );
 }
 
-const empty = { fontFamily: "'Fraunces', serif", fontSize: 14, fontStyle: "italic", color: COLORS.textMuted, textAlign: "center", padding: "40px 20px" };
-
 const fadeX = { WebkitMaskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)", maskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)" };
 
 const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => {
@@ -41,28 +39,57 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
   const [activeList, setActiveList] = useState(0);
   const [storeFilter, setStoreFilter] = useState("All");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [pending, setPending] = useState({}); // id -> target checked, shown before the row re-buckets
 
   async function load() {
-    const [boot, ls, st, its] = await Promise.all([getBootstrap(), listLists(), listStores(), listListItems()]);
-    setCtx(boot); setLists(ls); setStores(st); setItems(its); setLoading(false);
+    try {
+      setError(false);
+      const [boot, ls, st, its] = await Promise.all([getBootstrap(), listLists(), listStores(), listListItems()]);
+      setCtx(boot); setLists(ls); setStores(st); setItems(its);
+    } catch (e) {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => { load(); const u = subscribe("item", load); return () => u(); }, []);
 
+  // Check the box first (in place), then let it move to/from Done — feels complete.
   async function toggle(it) {
-    await updateItem(it.id, { checked: !it.checked, checked_at: !it.checked ? new Date().toISOString() : null });
-    await load(); onChanged?.();
+    const target = !it.checked;
+    setPending((p) => ({ ...p, [it.id]: target }));
+    await updateItem(it.id, { checked: target, checked_at: target ? new Date().toISOString() : null });
+    setTimeout(async () => {
+      await load();
+      setPending((p) => { const n = { ...p }; delete n[it.id]; return n; });
+      onChanged?.();
+    }, 380);
   }
+  async function del(it) { await deleteItem(it.id); await load(); onChanged?.(); }
   async function addList(name) { const l = await createList({ name, space_id: ctx?.space?.id }); await load(); setActiveList(lists.length); setStoreFilter("All"); onChanged?.(); }
   async function addStore(name) { await createStore({ name, space_id: ctx?.space?.id }); await load(); onChanged?.(); }
 
-  if (loading) return (<div style={{ padding: "0 16px" }}><p style={empty}>Loading the list…</p></div>);
+  if (loading) return (<div style={{ padding: "0 16px" }}><EmptyState>Loading the list…</EmptyState></div>);
+  if (error) return (
+    <div style={{ padding: "0 16px" }}>
+      <EmptyState style={{ fontStyle: "normal" }}>
+        Couldn’t load your lists.{" "}
+        <button onClick={load} className="focusable" style={{ background: "none", border: "none", color: COLORS.accent, cursor: "pointer", font: "inherit", textDecoration: "underline" }}>Try again</button>
+      </EmptyState>
+    </div>
+  );
 
   const list = lists[activeList];
   const listItems = items.filter((i) => i.list_id === (list && list.id));
   const storeChips = list && list.has_stores ? ["All", ...stores.map((s) => s.name)] : null;
   const filtered = listItems.filter((i) => (storeFilter === "All" || i.store === storeFilter) && (laneFilter === "all" || i.lane === laneFilter));
-  const unchecked = filtered.filter((i) => !i.checked);
-  const checked = filtered.filter((i) => i.checked);
+  // While an item is mid-toggle (pending), keep it in its ORIGINAL bucket so the
+  // checkbox ticks in place before the row moves. (The mock mutates `checked` in
+  // place, so we can't rely on it.checked for bucketing during the transition.)
+  const bucketDone = (i) => (i.id in pending ? !pending[i.id] : i.checked);
+  const unchecked = filtered.filter((i) => !bucketDone(i));
+  const checked = filtered.filter((i) => bucketDone(i));
 
   const grouped = {};
   const useGrouped = list && list.has_stores && storeFilter === "All";
@@ -71,15 +98,23 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
   const Row = ({ it }) => {
     const label = ctx ? resolveLaneLabel(it.lane, ctx.viewerSlot, ctx.space) : it.lane;
     const color = ctx ? resolveLaneColor(it.lane, ctx.people, COLORS) : COLORS.laneUs;
+    const nodeColor = it.color || color;
+    const checked = it.id in pending ? pending[it.id] : it.checked;
     return (
-      <div onClick={() => onOpenItem?.(it)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, background: COLORS.surface, cursor: "pointer", marginBottom: 2 }}>
-        <button onClick={(e) => { e.stopPropagation(); toggle(it); }} style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, cursor: "pointer", border: it.checked ? "none" : `2px solid ${COLORS.textMuted}`, background: it.checked ? COLORS.accent : "transparent", color: COLORS.bg, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{it.checked ? "✓" : ""}</button>
-        <span style={{ flex: 1, fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: it.checked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: it.checked ? "line-through" : "none" }}>
-          {it.title}{it.qty && <span style={{ color: COLORS.textMuted, marginLeft: 6, fontSize: 12 }}>{it.qty}</span>}
-        </span>
-        {it.store && storeFilter !== it.store && <StoreBadge store={it.store} />}
-        <LaneBadge label={label} color={color} />
-      </div>
+      <Card laneColor={nodeColor} onClick={() => onOpenItem?.(it)} style={{ padding: `${SPACE[2]}px ${SPACE[3]}px`, marginBottom: SPACE[1] + 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE[2] }}>
+          <button onClick={(e) => { e.stopPropagation(); toggle(it); }} aria-label={checked ? "Mark not done" : "Mark done"} aria-pressed={checked} className="focusable"
+            style={{ width: 19, height: 19, borderRadius: 6, flexShrink: 0, cursor: "pointer", border: checked ? "none" : `1.5px solid ${withAlpha(nodeColor, 0.55)}`, background: checked ? nodeColor : "transparent", color: COLORS.bg, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", transition: "background 150ms ease, border-color 150ms ease" }}>{checked ? "✓" : ""}</button>
+          <span style={{ flex: 1, ...TYPE.body, color: checked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: checked ? "line-through" : "none" }}>
+            {it.title}{it.qty && <span style={{ color: COLORS.textMuted, marginLeft: 6, fontSize: 12 }}>{it.qty}</span>}
+          </span>
+          {it.store && storeFilter !== it.store && <StoreBadge store={it.store} />}
+          <LaneBadge label={label} color={color} />
+          {bucketDone(it) && (
+            <button onClick={(e) => { e.stopPropagation(); del(it); }} aria-label="Delete item" className="focusable" style={{ width: 22, height: 22, borderRadius: 11, border: "none", background: "transparent", color: COLORS.textMuted, cursor: "pointer", fontSize: 17, lineHeight: 1, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          )}
+        </div>
+      </Card>
     );
   };
 
@@ -88,9 +123,9 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
         <div className="no-sb" style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", flex: 1, ...fadeX }}>
         {lists.map((l, i) => (
-          <button key={l.id} onClick={() => { setActiveList(i); setStoreFilter("All"); }} style={{ padding: "6px 14px", borderRadius: 20, border: i === activeList ? `1px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}`, fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", background: i === activeList ? COLORS.accentMuted : "transparent", color: i === activeList ? COLORS.accent : COLORS.textSecondary }}>
+          <Chip key={l.id} active={i === activeList} variant="soft" onClick={() => { setActiveList(i); setStoreFilter("All"); }}>
             {l.emoji} {l.name}
-          </button>
+          </Chip>
         ))}
         </div>
         <InlineAdd placeholder="New list" label="List" onAdd={addList} />
@@ -100,9 +135,9 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 14 }}>
           <div className="no-sb" style={{ display: "flex", alignItems: "center", gap: 4, overflowX: "auto", flex: 1, ...fadeX }}>
           {storeChips.map((s) => (
-            <button key={s} onClick={() => setStoreFilter(s)} style={{ padding: "4px 10px", borderRadius: 14, border: storeFilter === s ? `1px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}`, fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", background: storeFilter === s ? COLORS.accentMuted : "transparent", color: storeFilter === s ? COLORS.accent : COLORS.textMuted }}>
+            <Chip key={s} active={storeFilter === s} variant="soft" onClick={() => setStoreFilter(s)} style={{ fontSize: 11, padding: "4px 10px" }}>
               {s === "All" ? "All stores" : s}
-            </button>
+            </Chip>
           ))}
           </div>
           <InlineAdd placeholder="New store" label="Store" onAdd={addStore} />
@@ -113,7 +148,7 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
         {useGrouped
           ? Object.entries(grouped).map(([store, its]) => (
               <div key={store}>
-                <div style={{ fontSize: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.8, padding: "10px 4px 6px" }}>{store}</div>
+                <SectionLabel style={{ padding: "10px 4px 6px" }}>{store}</SectionLabel>
                 {its.map((it) => <Row key={it.id} it={it} />)}
               </div>
             ))
@@ -121,12 +156,12 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all" }) => 
 
         {checked.length > 0 && (
           <div style={{ marginTop: 14, opacity: 0.5 }}>
-            <div style={{ fontSize: 10, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.8, padding: "0 4px 6px" }}>Done</div>
+            <SectionLabel style={{ padding: "0 4px 6px", color: COLORS.textMuted }}>Done</SectionLabel>
             {checked.map((it) => <Row key={it.id} it={it} />)}
           </div>
         )}
 
-        {unchecked.length === 0 && checked.length === 0 && <p style={empty}>The list is empty. The fridge probably isn't. Or is it.</p>}
+        {unchecked.length === 0 && checked.length === 0 && <EmptyState>The list is empty. The fridge probably isn't. Or is it.</EmptyState>}
       </div>
     </div>
   );

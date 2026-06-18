@@ -3,7 +3,10 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 // PWA scaffolding stood up in Phase 0 so push (Phase 2) has a home.
+// `base` defaults to "/" (local + root-domain hosts like Vercel/Netlify); CI sets
+// BASE_PATH=/two-do/ for GitHub Pages (served under the repo subpath).
 export default defineConfig({
+  base: process.env.BASE_PATH || "/",
   plugins: [
     react(),
     VitePWA({

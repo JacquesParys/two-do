@@ -58,12 +58,14 @@ Fields marked *opt* are nullable/optional. Types are conceptual (`id`, `text`, `
 | claimedBy | ref→Person, opt | a `shared` item one person has "got" — doesn't change lane, matters for money math |
 | notes | text, opt | |
 | emoji | text, opt | user- or AI-suggested |
+| color | text (hex), opt | custom **node color**; overrides the lane color for this item's wash/glow (the lane *badge* still shows Me/You/Us). Exciting items glow in this node color. |
 | kind | enum | `routine` · `exciting` — on the **spine** so tasks *and* events can be exciting; drives glow / sleeps / emoji |
 | createdBy | ref→Person | attribution (so "remind me" resolves) |
 | createdAt | timestamp | |
 | updatedAt | timestamp | |
 | deletedAt | timestamp, opt | soft-delete; filtered out on read |
 | parentItemId | ref→Item, opt | child of a card/event: a subtask step **or** a member of a list attached to it. Top-level views exclude children. |
+| linkedListId | ref→List, opt | a card/event that **references** a standing list (shown inline; one source of truth). Distinct from `listId` membership. |
 
 > **Views are field-driven, `type` is the primary nature.** An item appears in a view based on which placement fields are set, **not** its `type`: `columnId` → board (Cards), `startAt`/`dueAt` → calendar (Dates), `listId` → list (Lists). One item can satisfy several at once — a dated task is both a card and a calendar entry ("one thing, three views"). So `type` only drives capture defaults / icon / which editor fields show. The fields below are grouped by the type that *usually* sets them, but any of them may be combined on one item (e.g. a `task` with a `listId` shows in both Cards and Lists).
 
@@ -76,7 +78,7 @@ Fields marked *opt* are nullable/optional. Types are conceptual (`id`, `text`, `
 | columnId | ref→Column | which kanban column the card sits in |
 | state | enum | `open` · `done` · `parked` (parked ≠ overdue) |
 | persistentUntilDone | bool | opt-in resurfacing nudge |
-| recurrenceId | ref→Recurrence, opt | |
+| recurFreq / recurUntil / recurExcept | enum / ts / jsonb, opt | embedded recurrence — `daily`·`weekly`·`monthly`, optional end, skipped occurrence keys. Occurrences are expanded on read, never stored. |
 
 **Event fields** (when `type = event`)
 
@@ -84,7 +86,7 @@ Fields marked *opt* are nullable/optional. Types are conceptual (`id`, `text`, `
 |---|---|---|
 | startAt | timestamp | |
 | endAt | timestamp, opt | |
-| recurrenceId | ref→Recurrence, opt | |
+| recurFreq / recurUntil / recurExcept | enum / ts / jsonb, opt | embedded recurrence — `daily`·`weekly`·`monthly`, optional end, skipped occurrence keys. Occurrences are expanded on read, never stored. |
 
 *(`kind` lives on the Item spine now — see above — so events read routine/exciting from there.)*
 
@@ -188,14 +190,7 @@ Fields marked *opt* are nullable/optional. Types are conceptual (`id`, `text`, `
 | to | ref→Person | |
 | at | timestamp | |
 
-**Recurrence** — a repeat rule (shared by tasks and events).
-
-| Field | Type | Notes |
-|---|---|---|
-| id | id | |
-| rule | text | RRULE-style or structured (freq, interval, byday) |
-| until | timestamp, opt | optional end |
-| exceptions | json, opt | supports "this occurrence only" edits vs whole series |
+**Recurrence — embedded on the Item** (resolved decision; no separate table). Fields `recurFreq` (`daily`·`weekly`·`monthly`), `recurUntil`, `recurExcept` (skipped date keys). Occurrences are **expanded on read** for the visible window by `src/lib/recurrence.js` (`occursOn` / `occurrenceFor` / `itemsOnDay`) — virtual, never stored, carrying a `_master` ref. Virtual occurrences are tap-only (open the master series); drag/resize is disabled on them.
 
 **ReminderSetting** *(phase 2, listed for completeness)* — per-item nudge config: `itemId`, `nudgeAt`, `persistent` bool, `channel` (in-app / push).
 
@@ -210,7 +205,6 @@ Space 1───* Store         Shopping *───0..1 Store
 Space 1───* Bill
 Space 1───* SavingsGoal   SavingsGoal 0..1───1 Item(event)
 Space 1───* Settlement
-Item(task|event) 0..1───1 Recurrence
 Expense *───1 Person (paidBy)
 SavingsGoal 1───* GoalContribution
 ```
@@ -232,6 +226,7 @@ All model questions are now settled:
 - **View membership → field-driven, not type-filtered.** `type` is the primary-nature hint; presence of `columnId` / `startAt`·`dueAt` / `listId` decides board / calendar / list membership, so one item can appear in several views.
 - **`listId` is general list membership** — any item type can be filed into a list (resolves the spec's "a task that lives in a list also shows up as a card").
 - **Sub-tasks → child Items via `parentItemId`** (reverses the earlier lightweight-`Subtask`-table call). The same mechanism models a checklist/list attached to a card or event, so there is one concept instead of two. The standalone `subtask` table is dropped.
+- **List relationships are three-way:** `listId` (item is a line *in* a standing list), `linkedListId` (a card/event *references* a standing list, shown inline — one source of truth, no duplication), and `parentItemId` (ad-hoc child checklist on an item). A "grocery run" event uses `linkedListId` to point at the live Groceries list.
 - **Goal progress → summed `GoalContribution` rows** (audit trail; no stored `saved`).
 - **`exciting` vs event `kind` → single `kind` enum on the Item spine** (`routine` · `exciting`), applying to tasks and events.
 - **Deletes → soft-delete** via `deletedAt`, filtered on read.

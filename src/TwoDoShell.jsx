@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { COLORS, ensureFonts } from "./theme";
 import { getBootstrap } from "./lib/data.js";
+import { signOut } from "./lib/auth.js";
+import { isMockMode } from "./lib/supabase.js";
 import ReviewTray from "./ReviewTray.jsx";
 import ItemDetail from "./ItemDetail.jsx";
 import LaneFilter from "./components/LaneFilter.jsx";
@@ -51,7 +53,6 @@ export default function TwoDoShell() {
   const [activeTab, setActiveTab] = useState(0);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const [inputValue, setInputValue] = useState("");
-  const [showAddSheet, setShowAddSheet] = useState(false);
   const [trayText, setTrayText] = useState(null); // open review tray when set
   const [trayKey, setTrayKey] = useState(0);
   const [ctx, setCtx] = useState(null);
@@ -64,7 +65,6 @@ export default function TwoDoShell() {
     const tmpl = { type, lane: "shared", kind: "routine" };
     if (type === "event") tmpl.start_at = new Date().toISOString();
     setEditing(tmpl);
-    setShowAddSheet(false);
   };
 
   useEffect(() => {
@@ -161,6 +161,9 @@ export default function TwoDoShell() {
           </button>
         ))}
         </div>
+        {!isMockMode && (
+          <button onClick={() => signOut()} title="Sign out" aria-label="Sign out" className="focusable" style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: 15, padding: "6px 2px", flexShrink: 0, lineHeight: 1 }}>⎋</button>
+        )}
       </div>
 
       {/* Content area. On desktop, single-column views stay readable (capped
@@ -206,95 +209,10 @@ export default function TwoDoShell() {
         />
       )}
 
-      {/* Add sheet overlay */}
-      {showAddSheet && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 10,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "flex-end",
-          }}
-        >
-          <div
-            onClick={() => setShowAddSheet(false)}
-            style={{
-              flex: 1,
-              background: "rgba(0,0,0,0.4)",
-            }}
-          />
-          <div
-            style={{
-              background: COLORS.bg,
-              borderTop: `1px solid ${COLORS.surfaceLight}`,
-              borderRadius: "20px 20px 0 0",
-              padding: "20px 20px 28px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <span style={{ fontFamily: "'Fraunces', serif", fontSize: 18, color: COLORS.textPrimary }}>
-                Add new…
-              </span>
-              <button
-                onClick={() => setShowAddSheet(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: COLORS.textMuted,
-                  fontSize: 20,
-                  cursor: "pointer",
-                  padding: 4,
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {[
-                { icon: "📅", label: "Event", desc: "Add to Dates", type: "event" },
-                { icon: "🃏", label: "Task", desc: "Add to Cards", type: "task" },
-                { icon: "🛒", label: "Shopping item", desc: "Add to a list", type: "shopping" },
-                { icon: "💰", label: "Expense", desc: "Add to Two Cents", type: "expense" },
-              ].map((opt) => (
-                <button
-                  key={opt.label}
-                  onClick={() => startNew(opt.type)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "14px 16px",
-                    borderRadius: 14,
-                    background: COLORS.surface,
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    width: "100%",
-                    transition: "background 0.15s ease",
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>{opt.icon}</span>
-                  <div>
-                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 500, color: COLORS.textPrimary }}>
-                      {opt.label}
-                    </div>
-                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
-                      {opt.desc}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* FAB - Add button */}
       <div className="twodo-fab" style={{ position: "absolute", right: 20, bottom: 82, zIndex: 5, animation: "twodoFloat 3.6s ease-in-out infinite" }}>
         <button
-          onClick={() => setShowAddSheet(true)}
+          onClick={() => startNew("task")}
           style={{
             width: 48,
             height: 48,
