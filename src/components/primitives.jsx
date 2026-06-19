@@ -9,7 +9,7 @@ export const ExcitingFx = ({ variant, color = COLORS.accent }) => {
     <span aria-hidden className="motion" style={{
       position: "absolute", top: 0, bottom: 0, left: "-10%", width: "60%",
       background: `linear-gradient(105deg, transparent, ${withAlpha(color, 0.42)}, transparent)`,
-      filter: "blur(3px)", pointerEvents: "none", animation: "twodoSparkle 7.65s ease-in-out infinite",
+      filter: "blur(3px)", pointerEvents: "none", animation: "twodoSparkle 15s ease-in-out infinite",
     }} />
   );
 };
