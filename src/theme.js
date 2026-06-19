@@ -121,13 +121,15 @@ export function ensureFonts() {
         0%,100% { box-shadow: 0 0 0 1px var(--fxLo, transparent), 0 4px 14px var(--fxLo, transparent); }
         50%     { box-shadow: 0 0 0 1.5px var(--fxHi, transparent), 0 8px 30px var(--fxHi, transparent); }
       }
-      /* Sparkle: a soft item-coloured sheen that fades in, sweeps, fades out, then rests. */
+      /* Sparkle: a soft item-coloured sheen that fades in, sweeps, fades out, then
+         snaps back to the start (while invisible) and rests — a seamless loop. */
       @keyframes twodoSparkle {
         0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
-        10%  { opacity: 1; }
-        45%  { opacity: 1; }
-        55%  { transform: translateX(240%) skewX(-14deg); opacity: 0; }
-        100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+        8%   { opacity: 1; }
+        40%  { opacity: 1; }
+        50%  { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+        51%  { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+        100% { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
       }
       /* Float bobs each line/chip with a staggered offset for an organic drift. */
       .fx-float > * { animation: twodoFloat 3.2s ease-in-out infinite; }
