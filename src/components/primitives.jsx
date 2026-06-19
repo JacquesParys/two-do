@@ -47,7 +47,7 @@ export const LaneFill = ({ color, proximity = 0, completion = 0 }) => (
 // `laneColor` (alias: `stripeColor`) tints the wash. Pass `proximity`/`completion`
 // (0–1) to turn the static wash into the growing two-layer LaneFill.
 // ---------------------------------------------------------------------------
-export const Card = ({ laneColor, stripeColor, exciting, variant, seed, proximity, completion, onClick, className = "", style, children, ...rest }) => {
+export const Card = ({ laneColor, stripeColor, exciting, variant, seed, dragging, proximity, completion, onClick, className = "", style, children, ...rest }) => {
   const interactive = !!onClick;
   const lane = laneColor ?? stripeColor;
   const hasFill = proximity != null || completion != null;
@@ -55,9 +55,14 @@ export const Card = ({ laneColor, stripeColor, exciting, variant, seed, proximit
   // stable one from this instance's id — either way two cards never sync up.
   const autoId = useId();
   const phase = seed != null ? seed : fxSeed(autoId);
-  const exStyle = exciting
-    ? excitingStyle(variant, lane || COLORS.accentGlow, phase)
-    : { boxShadow: SHADOW.md, border: "1px solid transparent" };
+  // While dragged, suppress the exciting glow/animation and use a neutral dark
+  // drag shadow (no coral following the finger).
+  const fx = exciting && !dragging;
+  const exStyle = dragging
+    ? { boxShadow: SHADOW.drag, border: "1px solid transparent" }
+    : exciting
+      ? excitingStyle(variant, lane || COLORS.accentGlow, phase)
+      : { boxShadow: SHADOW.md, border: "1px solid transparent" };
   return (
     <div
       onClick={onClick}
@@ -94,8 +99,8 @@ export const Card = ({ laneColor, stripeColor, exciting, variant, seed, proximit
             }}
           />
         ))}
-      {exciting && <ExcitingFx variant={variant} color={lane || COLORS.accentGlow} seed={phase} />}
-      <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative", "--fxSeed": `${phase}s` }}>{children}</div>
+      {fx && <ExcitingFx variant={variant} color={lane || COLORS.accentGlow} seed={phase} />}
+      <div className={`motion${fx && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative", "--fxSeed": `${phase}s` }}>{children}</div>
     </div>
   );
 };

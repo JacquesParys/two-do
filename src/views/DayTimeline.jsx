@@ -61,10 +61,23 @@ function packColumns(blocks) {
   return out;
 }
 
+// Recompute a drag's live position from the current pointer Y. Pure: used by both
+// the pointermove handler and the edge auto-scroll loop.
+function dragNext(d, clientY) {
+  const dy = clientY - d.startY;
+  const moved = d.moved || Math.abs(dy) > 4;
+  if (d.mode === "create") { const curMin = clamp(snap(d.startMin + dy / pxPerMin), 0, DAY_MIN); return { ...d, curMin, moved }; }
+  if (d.mode === "resizeBottom") { const durMin = clamp(snap(d.origDurMin + dy / pxPerMin), MIN_DUR, DAY_MIN - d.origTopMin); return { ...d, durMin, moved }; }
+  if (d.mode === "resizeTop") { const endMin = d.origTopMin + d.origDurMin; const topMin = clamp(snap(d.origTopMin + dy / pxPerMin), 0, endMin - MIN_DUR); return { ...d, topMin, durMin: endMin - topMin, moved }; }
+  const topMin = clamp(snap(d.origTopMin + dy / pxPerMin), 0, DAY_MIN - d.durMin); return { ...d, topMin, moved };
+}
+
 export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenItem, onChange, onCreate }) {
   const scrollRef = useRef(null);
   const dragRef = useRef(null);
   const holdRef = useRef(null); // pending press-and-hold (touch) before a drag commits
+  const lastYRef = useRef(0); // latest pointer Y, for edge auto-scroll
+  const rafRef = useRef(0); // edge auto-scroll RAF handle
   const propsRef = useRef({});
   propsRef.current = { day, onChange, onOpenItem, onCreate };
 
@@ -98,23 +111,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
       const d = dragRef.current;
       if (!d) return;
       if (d.it?._recurring) return; // recurring occurrences are tap-only
-      const dy = e.clientY - d.startY;
-      const moved = d.moved || Math.abs(dy) > 4;
-      let next;
-      if (d.mode === "create") {
-        const curMin = clamp(snap(d.startMin + dy / pxPerMin), 0, DAY_MIN);
-        next = { ...d, curMin, moved };
-      } else if (d.mode === "resizeBottom") {
-        const durMin = clamp(snap(d.origDurMin + dy / pxPerMin), MIN_DUR, DAY_MIN - d.origTopMin);
-        next = { ...d, durMin, moved };
-      } else if (d.mode === "resizeTop") {
-        const endMin = d.origTopMin + d.origDurMin;
-        const topMin = clamp(snap(d.origTopMin + dy / pxPerMin), 0, endMin - MIN_DUR);
-        next = { ...d, topMin, durMin: endMin - topMin, moved };
-      } else {
-        const topMin = clamp(snap(d.origTopMin + dy / pxPerMin), 0, DAY_MIN - d.durMin);
-        next = { ...d, topMin, moved };
-      }
+      lastYRef.current = e.clientY;
+      const next = dragNext(d, e.clientY);
       dragRef.current = next;
       setDrag(next);
     };
@@ -177,13 +175,42 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("touchmove", onTouchMove);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
+
+  // Edge auto-scroll: while a drag is live and the finger sits in the top/bottom
+  // band of the timeline, scroll the container and keep the block under the finger
+  // (adjust startY by the scrolled amount so its position tracks the content).
+  function startAutoScroll() {
+    if (rafRef.current) return;
+    const EDGE = 72, MAX_V = 14;
+    const step = () => {
+      const d = dragRef.current;
+      const el = scrollRef.current;
+      if (!d || !el) { rafRef.current = 0; return; }
+      const rect = el.getBoundingClientRect();
+      const y = lastYRef.current;
+      let v = 0;
+      if (y < rect.top + EDGE) v = -MAX_V * Math.min(1, (rect.top + EDGE - y) / EDGE);
+      else if (y > rect.bottom - EDGE) v = MAX_V * Math.min(1, (y - (rect.bottom - EDGE)) / EDGE);
+      if (v && d.moved) {
+        const before = el.scrollTop;
+        el.scrollTop = clamp(before + v, 0, el.scrollHeight - el.clientHeight);
+        const applied = el.scrollTop - before;
+        if (applied) { d.startY -= applied; const next = dragNext(d, y); dragRef.current = next; setDrag(next); }
+      }
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+  }
 
   function beginDrag(it, mode, startMin, durMin, startY) {
     const d = { it, mode, startY, origTopMin: startMin, origDurMin: durMin, topMin: startMin, durMin, moved: false };
     dragRef.current = d;
+    lastYRef.current = startY;
     setDrag(d);
+    startAutoScroll();
   }
 
   // Mouse drags immediately; touch/pen requires a deliberate press-and-hold so a
@@ -212,7 +239,9 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
   function beginCreate(startMin, startY) {
     const d = { mode: "create", startMin, curMin: startMin, startY, moved: false };
     dragRef.current = d;
+    lastYRef.current = startY;
     setDrag(d);
+    startAutoScroll();
   }
 
   // Press/tap-drag an empty slot to draw a new event (ghost follows the finger);
@@ -305,7 +334,11 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
             const nodeCol = b.it.color || laneCol;
             const variant = b.it.exciting_fx || "glow";
             const seed = fxSeed(b.it.id);
-            const exStyle = exciting ? excitingStyle(variant, nodeCol, seed) : { boxShadow: SHADOW.md, border: "1px solid transparent" };
+            // While dragging, drop the coral glow/animation for a neutral dark shadow.
+            const fx = exciting && !dragging;
+            const exStyle = dragging
+              ? { boxShadow: SHADOW.drag, border: "1px solid transparent" }
+              : exciting ? excitingStyle(variant, nodeCol, seed) : { boxShadow: SHADOW.md, border: "1px solid transparent" };
             const completion = b.it.subtasks && b.it.subtasks.total ? b.it.subtasks.done / b.it.subtasks.total : 0;
             const linked = (b.it.linked_list_ids || []).map((id) => summaries[id]).filter(Boolean);
             const time = b.it.start_at || resizing ? `${fmtMin(topMin)}–${fmtMin(topMin + durMin)}` : fmtMin(topMin);
@@ -325,8 +358,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                   }}
                 >
                   <LaneFill color={nodeCol} proximity={timeProximity(b.it)} completion={completion} />
-                  {exciting && <ExcitingFx variant={variant} color={nodeCol} seed={seed} />}
-                  <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative", "--fxSeed": `${seed}s` }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
+                  {fx && <ExcitingFx variant={variant} color={nodeCol} seed={seed} />}
+                  <div className={`motion${fx && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative", "--fxSeed": `${seed}s` }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
                   {hPx >= 48 && linked.length > 0 && (
                     <div style={{ position: "relative" }}><LinkedListChips lists={linked} style={{ marginTop: 4 }} /></div>
                   )}

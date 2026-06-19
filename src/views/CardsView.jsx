@@ -7,7 +7,7 @@ import {
   SortableContext, useSortable, arrayMove, verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha } from "../theme";
+import { COLORS, TYPE, SPACE, RADIUS, withAlpha } from "../theme";
 import {
   Card, LaneBadge, SleepsChip, ProgressBar, Chip, SectionLabel, PillButton, EmptyState, CalendarIcon, LinkedListChips,
 } from "../components/primitives.jsx";
@@ -52,7 +52,7 @@ function emptyLine(role) {
 function CardBody({ display, dragging, canDelete, onDelete }) {
   const { title, laneLabel, laneColor, nodeColor, due, subtasks, exciting, variant, seed, emoji, sleeps, proximity, completion } = display;
   return (
-    <Card stripeColor={nodeColor} exciting={exciting} variant={variant} seed={seed} proximity={proximity} completion={completion} style={dragging ? { boxShadow: SHADOW.lg } : undefined}>
+    <Card stripeColor={nodeColor} exciting={exciting} variant={variant} seed={seed} dragging={dragging} proximity={proximity} completion={completion}>
       {canDelete && (
         // Quick delete for Done cards. stopPropagation so it neither starts a
         // drag (PointerSensor) nor opens the editor (the card's onClick).

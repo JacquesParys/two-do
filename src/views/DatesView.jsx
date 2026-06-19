@@ -13,7 +13,7 @@ const moveToDay = (iso, day) => { const d = new Date(iso); const n = new Date(da
 // Week-view drag wrappers — drop an entry on another day to reschedule it.
 function DroppableDay({ id, children, style }) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  return <div ref={setNodeRef} style={{ borderRadius: 10, minHeight: 10, background: isOver ? withAlpha(COLORS.accent, 0.1) : "transparent", transition: "background 120ms ease", ...style }}>{children}</div>;
+  return <div ref={setNodeRef} style={{ borderRadius: 10, minHeight: 10, background: isOver ? withAlpha(COLORS.bgDeep, 0.55) : "transparent", transition: "background 120ms ease", ...style }}>{children}</div>;
 }
 function DraggableEvent({ id, children }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id });
@@ -195,7 +195,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
   // Recurring occurrences open their master series item.
   const openItem = (it) => onOpenItem?.(it._master || it);
 
-  const Event = ({ e }) => {
+  const Event = ({ e, dragging }) => {
     const exciting = e.kind === "exciting";
     const d = eventDate(e);
     const label = ctx ? resolveLaneLabel(e.lane, viewer, ctx.space) : e.lane;
@@ -203,7 +203,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     const nodeColor = e.color || color;
     const s = sleepsUntil(d);
     return (
-      <Card laneColor={nodeColor} exciting={exciting} variant={e.exciting_fx || "glow"} seed={fxSeed(e.id)} proximity={timeProximity(e)} onClick={() => openItem(e)} style={{ padding: `${SPACE[3]}px ${SPACE[3]}px`, marginBottom: SPACE[2] }}>
+      <Card laneColor={nodeColor} exciting={exciting} variant={e.exciting_fx || "glow"} seed={fxSeed(e.id)} dragging={dragging} proximity={timeProximity(e)} onClick={() => openItem(e)} style={{ padding: `${SPACE[3]}px ${SPACE[3]}px`, marginBottom: SPACE[2] }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2] }}>
           <span style={{ minWidth: 42, ...TYPE.meta, color: exciting ? nodeColor : COLORS.textMuted, paddingTop: 1 }}>{fmtTime(d)}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -313,7 +313,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     body = (
       <>
         {fullHeader}
-        <DndContext sensors={weekSensors} autoScroll={false} collisionDetection={closestCenter} onDragStart={(e) => { window.getSelection?.()?.removeAllRanges?.(); setWeekActiveId(e.active.id); }} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
+        <DndContext sensors={weekSensors} autoScroll={{ threshold: { x: 0, y: 0.2 }, acceleration: 12 }} collisionDetection={closestCenter} onDragStart={(e) => { window.getSelection?.()?.removeAllRanges?.(); setWeekActiveId(e.active.id); }} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {weekDays.map((day, i) => {
               const evs = eventsOn(day);
@@ -334,7 +334,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
               );
             })}
           </div>
-          <DragOverlay>{weekActiveId && events.find((e) => e.id === weekActiveId) ? <Event e={events.find((e) => e.id === weekActiveId)} /> : null}</DragOverlay>
+          <DragOverlay>{weekActiveId && events.find((e) => e.id === weekActiveId) ? <Event e={events.find((e) => e.id === weekActiveId)} dragging /> : null}</DragOverlay>
         </DndContext>
       </>
     );

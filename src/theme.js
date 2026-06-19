@@ -21,6 +21,7 @@ export const COLORS = {
   greenMuted: "rgba(143,191,163,0.16)",
   amber: "#E8C16B", // 1–2 days overdue (keep-reminding) — a warm nudge
   red: "#E86B6B", // 3+ days overdue (keep-reminding) — an urgent flag
+  bgDeep: "#0E1A1A", // a darker shade of bg — drag shadows + drop-zone tint
 };
 
 // Lane slot → stripe/accent color (the layered card's edge-stripe).
@@ -56,6 +57,8 @@ export const SHADOW = {
   sm: "0 1px 2px rgba(0,0,0,0.25)",
   md: "0 2px 6px rgba(0,0,0,0.30)",
   lg: "0 10px 26px rgba(0,0,0,0.45)",
+  // Elevation for a dragged item: a darker-than-bg green, never the coral glow.
+  drag: "0 14px 30px rgba(10, 20, 20, 0.6)",
   glow: `0 0 0 1px ${COLORS.accentGlow}55, 0 4px 18px rgba(232,137,107,0.22)`,
 };
 
