@@ -130,7 +130,6 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
   const hasDate = !!form[dateField];
   // The whole editor tints to the chosen lane's colour (Me=blue, You=purple, Us=coral).
   const accent = form.lane ? resolveLaneColor(form.lane, ctx?.people, COLORS) : COLORS.accent;
-  const typeLabel = form.type === "shopping" ? "list" : form.type;
 
   // Repeat presets ride on recur_freq + recur_interval (bi-weekly = weekly ×2).
   const recurInterval = form.recur_interval > 0 ? form.recur_interval : 1;
@@ -169,15 +168,13 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, maxHeight: "90%", display: "flex", flexDirection: "column", background: COLORS.bg, border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 20, boxShadow: "0 20px 60px rgba(0,0,0,0.55)", transform: shown ? "translateY(0) scale(1)" : "translateY(12px) scale(0.98)", transition: "transform 0.2s ease" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: `1px solid ${COLORS.surfaceLight}` }}>
           <button onClick={close} style={iconBtn}>Close</button>
-          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textMuted }}>{isNew ? "New" : "Edit"} {typeLabel}</span>
+          {/* The Me/You/Us lane toggle lives here (tints the whole editor) in place of a title. */}
+          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} accent={accent} compact />
           <button onClick={save} style={{ ...iconBtn, color: accent, fontWeight: 600 }}>Save</button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "14px 16px 22px" }}>
           <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" style={{ ...input, fontSize: 16, fontWeight: 600 }} />
-
-          <Label>Lane</Label>
-          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} accent={accent} />
 
           <Label>Type</Label>
           <Segmented
