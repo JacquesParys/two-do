@@ -122,6 +122,14 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
       return next;
     });
   }
+  // Tasks: toggle a date on/off. On → default to today (noon) and reveal the row.
+  function toggleDate() {
+    setForm((f) => {
+      if (f.due_at) return { ...f, due_at: null, end_at: null, recur_freq: null, recur_interval: null };
+      const d = new Date(); d.setHours(12, 0, 0, 0);
+      return { ...f, due_at: d.toISOString() };
+    });
+  }
   const viewer = ctx?.viewerSlot || SLOTS.A;
   const other = viewer === SLOTS.A ? SLOTS.B : SLOTS.A;
   const laneOpts = [viewer, other, SLOTS.SHARED].map((slot) => ({ slot, label: laneLabel(slot, viewer, ctx?.space) }));
@@ -191,6 +199,11 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             </>
           )}
 
+          {/* Tasks: a date is optional — toggle reveals the full date row (defaults to today). */}
+          {form.type === "task" && (
+            <Row><Toggle label="Date" on={hasDate} onClick={toggleDate} accent={accent} /></Row>
+          )}
+
           {form.type === "shopping" && (
             <>
               <Label>Shop</Label>
@@ -200,12 +213,12 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             </>
           )}
 
-          {(form.type === "task" || form.type === "event") && (
+          {(form.type === "event" || (form.type === "task" && hasDate)) && (
             <>
-              {/* When + Start + End share one row */}
+              {/* Date + Start + End share one row */}
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
                 <div style={{ flex: "2 1 150px", minWidth: 0 }}>
-                  <Label>{form.type === "event" ? "When" : "Due"}</Label>
+                  <Label>{form.type === "event" ? "When" : "Date"}</Label>
                   <DatePicker value={form[dateField]} onChange={(v) => set(dateField, v)} accent={accent} />
                 </div>
                 {hasDate && (
