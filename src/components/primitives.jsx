@@ -1,15 +1,17 @@
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle } from "../theme";
+import { useId } from "react";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle, fxSeed } from "../theme";
 
 // Animated exciting-effect overlay layers, rendered inside a card's rounded,
 // overflow-hidden surface. "sparkle" sweeps a soft item-coloured sheen; pulse/glow
 // (element box-shadow) and float (staggered content) are handled by the host.
-export const ExcitingFx = ({ variant, color = COLORS.accent }) => {
+export const ExcitingFx = ({ variant, color = COLORS.accent, seed = 0 }) => {
   if (variant !== "sparkle") return null;
   return (
     <span aria-hidden className="motion" style={{
       position: "absolute", top: 0, bottom: 0, left: "-10%", width: "60%",
       background: `linear-gradient(105deg, transparent, ${withAlpha(color, 0.42)}, transparent)`,
       filter: "blur(3px)", pointerEvents: "none", animation: "twodoSparkle 15s ease-in-out infinite",
+      animationDelay: seed ? `${seed}s` : undefined,
     }} />
   );
 };
@@ -45,12 +47,16 @@ export const LaneFill = ({ color, proximity = 0, completion = 0 }) => (
 // `laneColor` (alias: `stripeColor`) tints the wash. Pass `proximity`/`completion`
 // (0–1) to turn the static wash into the growing two-layer LaneFill.
 // ---------------------------------------------------------------------------
-export const Card = ({ laneColor, stripeColor, exciting, variant, proximity, completion, onClick, className = "", style, children, ...rest }) => {
+export const Card = ({ laneColor, stripeColor, exciting, variant, seed, proximity, completion, onClick, className = "", style, children, ...rest }) => {
   const interactive = !!onClick;
   const lane = laneColor ?? stripeColor;
   const hasFill = proximity != null || completion != null;
+  // Per-card phase offset: an explicit seed (from the item id) when given, else a
+  // stable one from this instance's id — either way two cards never sync up.
+  const autoId = useId();
+  const phase = seed != null ? seed : fxSeed(autoId);
   const exStyle = exciting
-    ? excitingStyle(variant, lane || COLORS.accentGlow)
+    ? excitingStyle(variant, lane || COLORS.accentGlow, phase)
     : { boxShadow: SHADOW.md, border: "1px solid transparent" };
   return (
     <div
@@ -88,8 +94,8 @@ export const Card = ({ laneColor, stripeColor, exciting, variant, proximity, com
             }}
           />
         ))}
-      {exciting && <ExcitingFx variant={variant} color={lane || COLORS.accentGlow} />}
-      <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative" }}>{children}</div>
+      {exciting && <ExcitingFx variant={variant} color={lane || COLORS.accentGlow} seed={phase} />}
+      <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative", "--fxSeed": `${phase}s` }}>{children}</div>
     </div>
   );
 };

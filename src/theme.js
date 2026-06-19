@@ -67,7 +67,7 @@ export const EXCITING_FX = ["glow", "pulse", "float", "sparkle"];
 // Element-level surface style for an exciting item: the static glow + border,
 // plus (for "pulse") an animation that breathes the element's OWN box-shadow
 // via CSS vars — its own shadow isn't clipped by the card's overflow:hidden.
-export function excitingStyle(variant, color) {
+export function excitingStyle(variant, color, seed = 0) {
   const s = { boxShadow: glow(color), border: `1px solid ${withAlpha(color, 0.45)}` };
   // Both glow and pulse breathe the element's OWN box-shadow via CSS vars (not
   // clipped by overflow:hidden). Glow ebbs slowly + bright; pulse is quicker + stronger.
@@ -80,7 +80,19 @@ export function excitingStyle(variant, color) {
     s["--fxLo"] = withAlpha(color, 0.3);
     s["--fxHi"] = withAlpha(color, 0.78);
   }
+  // A per-item phase offset (negative delay) so two exciting items never breathe
+  // in lockstep. Negative delays just advance the loop — no initial pause.
+  if (s.animation && seed) s.animationDelay = `${seed}s`;
   return s;
+}
+
+// Stable per-item phase offset (seconds, negative) derived from any key (an item
+// id). Same item → same drift every render; different items → desynced loops.
+// Wraps cleanly for any animation period since negative delays are taken modulo.
+export function fxSeed(key = "") {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  return -(((h >>> 0) % 1000) / 1000) * 6; // spread across a 6s window
 }
 // Float bobs the content (applied to an inner wrapper, never a drag-transformed element).
 export const excitingAnim = (variant) => (variant === "float" ? "twodoFloat 3.4s ease-in-out infinite" : undefined);
@@ -116,7 +128,13 @@ export function ensureFonts() {
     const s = document.createElement("style");
     s.id = "twodo-anim";
     s.textContent = `
-      @keyframes twodoFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+      /* Float: dwell at the resting position, ease gently up to the peak and back
+         down. The holds at 0/14% and 86/100% remove the cusp/stutter at the loop. */
+      @keyframes twodoFloat {
+        0%, 14%   { transform: translateY(0); }
+        50%       { transform: translateY(-7px); }
+        86%, 100% { transform: translateY(0); }
+      }
       @keyframes twodoPulse {
         0%,100% { box-shadow: 0 0 0 1px var(--fxLo, transparent), 0 4px 14px var(--fxLo, transparent); }
         50%     { box-shadow: 0 0 0 1.5px var(--fxHi, transparent), 0 8px 30px var(--fxHi, transparent); }
@@ -131,12 +149,13 @@ export function ensureFonts() {
         51%  { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
         100% { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
       }
-      /* Float bobs each line/chip with a staggered offset for an organic drift. */
-      .fx-float > * { animation: twodoFloat 3.2s ease-in-out infinite; }
-      .fx-float > *:nth-child(2) { animation-delay: 0.2s; }
-      .fx-float > *:nth-child(3) { animation-delay: 0.4s; }
-      .fx-float > *:nth-child(4) { animation-delay: 0.6s; }
-      .fx-float > *:nth-child(5) { animation-delay: 0.8s; }
+      /* Float bobs each line/chip with a staggered offset for an organic drift,
+         all shifted by the host's per-item --fxSeed so items don't sync up. */
+      .fx-float > * { animation: twodoFloat 3.6s ease-in-out infinite; animation-delay: var(--fxSeed, 0s); }
+      .fx-float > *:nth-child(2) { animation-delay: calc(var(--fxSeed, 0s) + 0.18s); }
+      .fx-float > *:nth-child(3) { animation-delay: calc(var(--fxSeed, 0s) + 0.36s); }
+      .fx-float > *:nth-child(4) { animation-delay: calc(var(--fxSeed, 0s) + 0.54s); }
+      .fx-float > *:nth-child(5) { animation-delay: calc(var(--fxSeed, 0s) + 0.72s); }
 
       /* No stray text selection on tap/drag; inputs stay selectable. */
       #root { -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; }

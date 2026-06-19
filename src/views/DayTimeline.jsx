@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle } from "../theme";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle, fxSeed } from "../theme";
 import { LaneBadge, LaneFill, LinkedListChips, timeProximity, ExcitingFx } from "../components/primitives.jsx";
 import { laneColor as resolveLaneColor, laneLabel as resolveLaneLabel } from "../lib/lanes.js";
 
@@ -304,7 +304,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
             const laneCol = lc(b.it);
             const nodeCol = b.it.color || laneCol;
             const variant = b.it.exciting_fx || "glow";
-            const exStyle = exciting ? excitingStyle(variant, nodeCol) : { boxShadow: SHADOW.md, border: "1px solid transparent" };
+            const seed = fxSeed(b.it.id);
+            const exStyle = exciting ? excitingStyle(variant, nodeCol, seed) : { boxShadow: SHADOW.md, border: "1px solid transparent" };
             const completion = b.it.subtasks && b.it.subtasks.total ? b.it.subtasks.done / b.it.subtasks.total : 0;
             const linked = (b.it.linked_list_ids || []).map((id) => summaries[id]).filter(Boolean);
             const time = b.it.start_at || resizing ? `${fmtMin(topMin)}–${fmtMin(topMin + durMin)}` : fmtMin(topMin);
@@ -324,8 +325,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                   }}
                 >
                   <LaneFill color={nodeCol} proximity={timeProximity(b.it)} completion={completion} />
-                  {exciting && <ExcitingFx variant={variant} color={nodeCol} />}
-                  <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative" }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
+                  {exciting && <ExcitingFx variant={variant} color={nodeCol} seed={seed} />}
+                  <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative", "--fxSeed": `${seed}s` }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
                   {hPx >= 48 && linked.length > 0 && (
                     <div style={{ position: "relative" }}><LinkedListChips lists={linked} style={{ marginTop: 4 }} /></div>
                   )}

@@ -1,4 +1,4 @@
-import { COLORS } from "../theme";
+import { COLORS, fxSeed } from "../theme";
 import { timeProximity } from "../components/primitives.jsx";
 import {
   laneLabel as resolveLaneLabel,
@@ -36,6 +36,7 @@ export function adaptCard(item, ctx, summaries = {}) {
     sleeps: item.countdown && sleeps && sleeps > 0 ? sleeps : null,
     exciting,
     variant: item.exciting_fx || "glow",
+    seed: fxSeed(item.id),
     emoji: item.emoji,
     subtasks: item.subtasks || null,
     proximity: timeProximity(item),
