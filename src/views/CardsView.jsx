@@ -49,9 +49,9 @@ function emptyLine(role) {
 }
 
 function CardBody({ display, dragging }) {
-  const { title, laneLabel, laneColor, nodeColor, due, subtasks, exciting, emoji, sleeps, proximity, completion } = display;
+  const { title, laneLabel, laneColor, nodeColor, due, subtasks, exciting, variant, emoji, sleeps, proximity, completion } = display;
   return (
-    <Card stripeColor={nodeColor} exciting={exciting} proximity={proximity} completion={completion} style={dragging ? { boxShadow: SHADOW.lg } : undefined}>
+    <Card stripeColor={nodeColor} exciting={exciting} variant={variant} proximity={proximity} completion={completion} style={dragging ? { boxShadow: SHADOW.lg } : undefined}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2] }}>
         {emoji && <span style={{ fontSize: 16, lineHeight: 1.2 }}>{emoji}</span>}
         <span style={{ ...TYPE.title, color: COLORS.textPrimary, flex: 1 }}>{title}</span>

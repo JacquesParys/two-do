@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow } from "../theme";
-import { LaneBadge, LaneFill, LinkedListChips, timeProximity } from "../components/primitives.jsx";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle, excitingAnim } from "../theme";
+import { LaneBadge, LaneFill, LinkedListChips, timeProximity, ExcitingFx } from "../components/primitives.jsx";
 import { laneColor as resolveLaneColor, laneLabel as resolveLaneLabel } from "../lib/lanes.js";
 
 // ---- Geometry & pure time helpers (exported for tests) --------------------
@@ -303,6 +303,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
             const hPx = Math.max(durMin * pxPerMin, 24);
             const laneCol = lc(b.it);
             const nodeCol = b.it.color || laneCol;
+            const variant = b.it.exciting_fx || "glow";
+            const exStyle = exciting ? excitingStyle(variant, nodeCol) : { boxShadow: SHADOW.md, border: "1px solid transparent" };
             const completion = b.it.subtasks && b.it.subtasks.total ? b.it.subtasks.done / b.it.subtasks.total : 0;
             const linked = (b.it.linked_list_ids || []).map((id) => summaries[id]).filter(Boolean);
             const time = b.it.start_at || resizing ? `${fmtMin(topMin)}–${fmtMin(topMin + durMin)}` : fmtMin(topMin);
@@ -316,14 +318,14 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                     position: "relative", height: "100%", width: "100%", boxSizing: "border-box",
                     borderRadius: RADIUS.lg,
                     background: `linear-gradient(160deg, ${COLORS.bgRaised}, ${COLORS.surface})`,
-                    boxShadow: exciting ? glow(nodeCol) : SHADOW.md,
-                    border: exciting ? `1px solid ${withAlpha(nodeCol, 0.45)}` : "1px solid transparent",
+                    ...exStyle,
                     overflow: "hidden", padding: `4px ${SPACE[2]}px`,
                     cursor: dragging ? "grabbing" : "grab", touchAction: d ? "none" : "pan-y", opacity: dragging ? 0.94 : 1,
                   }}
                 >
                   <LaneFill color={nodeCol} proximity={timeProximity(b.it)} completion={completion} />
-                  <div style={{ position: "relative" }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
+                  {exciting && <ExcitingFx variant={variant} />}
+                  <div className="motion" style={{ position: "relative", animation: exciting ? excitingAnim(variant) : undefined }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
                   {hPx >= 48 && linked.length > 0 && (
                     <div style={{ position: "relative" }}><LinkedListChips lists={linked} style={{ marginTop: 4 }} /></div>
                   )}

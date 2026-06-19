@@ -34,12 +34,12 @@ const mock = {
     // BOTH the board (Cards) and the calendar (Dates): "one thing, three views". ---
     { id: "i1", type: "task", title: "Book dentist appointment", lane: SLOTS.A, kind: "routine", column_id: "c1", ord: 0, due_at: isoOffset(0, 10, 0) },
     { id: "i2", type: "task", title: "Pick up cat food", lane: SLOTS.SHARED, kind: "routine", column_id: "c1", ord: 1, due_at: isoOffset(0, 12, 0) },
-    { id: "i3", type: "task", title: "Anniversary dinner", lane: SLOTS.SHARED, kind: "exciting", emoji: "💕", column_id: "c2", ord: 0, due_at: isoOffset(12, 19, 0), countdown: true },
-    { id: "i4", type: "task", title: "Japan trip research", lane: SLOTS.SHARED, kind: "exciting", emoji: "🇯🇵", column_id: "c3", ord: 0 },
+    { id: "i3", type: "task", title: "Anniversary dinner", lane: SLOTS.SHARED, kind: "exciting", emoji: "💕", exciting_fx: "pulse", column_id: "c2", ord: 0, due_at: isoOffset(12, 19, 0), countdown: true },
+    { id: "i4", type: "task", title: "Japan trip research", lane: SLOTS.SHARED, kind: "exciting", emoji: "🇯🇵", exciting_fx: "float", column_id: "c3", ord: 0 },
     { id: "t5", type: "task", title: "Reply to landlord", lane: SLOTS.A, kind: "routine", column_id: "c1", ord: 2, due_at: isoOffset(0, 16, 0) },
     { id: "t6", type: "task", title: "Renew passport", lane: SLOTS.A, kind: "routine", column_id: "c2", ord: 1 },
     { id: "t7", type: "task", title: "Fix the leaky tap", lane: SLOTS.B, kind: "routine", column_id: "c2", ord: 2 },
-    { id: "t8", type: "task", title: "Plan summer holiday", lane: SLOTS.SHARED, kind: "exciting", emoji: "✈️", column_id: "c3", ord: 1, color: "#E8C16B" },
+    { id: "t8", type: "task", title: "Plan summer holiday", lane: SLOTS.SHARED, kind: "exciting", emoji: "✈️", exciting_fx: "sparkle", column_id: "c3", ord: 1, color: "#E8C16B" },
     { id: "t9", type: "task", title: "Clear the loft", lane: SLOTS.B, kind: "routine", column_id: "c3", ord: 2 },
     { id: "t10", type: "task", title: "Pay car insurance", lane: SLOTS.A, kind: "routine", column_id: "c4", ord: 0, state: "done" },
     { id: "t11", type: "task", title: "Tidy the garage", lane: SLOTS.SHARED, kind: "routine", column_id: "c4", ord: 1, state: "done" },
@@ -433,7 +433,7 @@ export async function computeBalance() {
 // Real `item` columns — anything else (e.g. UI-only `subtasks`, `store`,
 // `_recurring`, adapter fields) is dropped so Supabase doesn't 400 on it.
 const ITEM_COLUMNS = new Set([
-  "id", "space_id", "type", "title", "lane", "kind", "claimed_by", "notes", "emoji", "color",
+  "id", "space_id", "type", "title", "lane", "kind", "claimed_by", "notes", "emoji", "color", "exciting_fx",
   "created_by", "created_at", "updated_at", "deleted_at", "parent_item_id", "linked_list_ids",
   "due_at", "location_context", "column_id", "ord", "state", "persistent_until_done", "countdown",
   "start_at", "end_at", "list_id", "qty", "price_estimate", "store", "checked", "checked_at",

@@ -35,6 +35,7 @@ export function adaptCard(item, ctx, summaries = {}) {
     due,
     sleeps: item.countdown && sleeps && sleeps > 0 ? sleeps : null,
     exciting,
+    variant: item.exciting_fx || "glow",
     emoji: item.emoji,
     subtasks: item.subtasks || null,
     proximity: timeProximity(item),

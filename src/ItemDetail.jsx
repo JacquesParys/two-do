@@ -1,11 +1,106 @@
-import { useEffect, useState } from "react";
-import { COLORS, withAlpha } from "./theme";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { COLORS, withAlpha, glow, EXCITING_FX, excitingAnim } from "./theme";
 import { laneLabel, laneColor as resolveLaneColor, SLOTS } from "./lib/lanes.js";
+import { ExcitingFx } from "./components/primitives.jsx";
 import { createItem, updateItem, deleteItem, listColumns, listStores, createStore, listLists, listItemsForList } from "./lib/data.js";
 
-const EMOJI = ["💕", "🎉", "🎸", "✈️", "🎂", "🍷", "🏖️", "🎬", "⚽", "🎄", "🎁", "🌟", "🍕", "🐱", "🏡", "💸"];
 const SWATCHES = ["#6BB5E8", "#7AA0E8", "#8FBFA3", "#E8C16B", "#E8896B", "#E86B9B", "#B98CE8", "#9B8CE8", "#C98B6B"];
-const swatch = { width: 30, height: 30, borderRadius: 15, cursor: "pointer", flexShrink: 0, padding: 0 };
+const FX_LABEL = { glow: "Glow", pulse: "Pulse", float: "Float", sparkle: "Sparkle" };
+
+// Close a popover on outside pointerdown or Esc (only while `active`).
+function useOutsideClose(ref, onClose, active) {
+  useEffect(() => {
+    if (!active) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
+  }, [active, onClose, ref]);
+}
+
+// Shared popover panel chrome (absolute, anchored to a position:relative parent).
+function Popover({ children, width = 280, align = "left" }) {
+  return (
+    <div style={{ position: "absolute", top: "calc(100% + 6px)", [align]: 0, zIndex: 20, width, background: COLORS.surface, border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 14, padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+      {children}
+    </div>
+  );
+}
+
+// Small backgroundless inline switch (label + pill) — for secondary toggles
+// that sit on a primary row (e.g. the task Date toggle next to the columns).
+function MiniToggle({ label, on, onClick, accent = COLORS.accent }) {
+  return (
+    <button onClick={onClick} aria-pressed={on} className="focusable" style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", padding: "4px 2px", color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+      {label}
+      <span style={{ width: 32, height: 18, borderRadius: 9, background: on ? accent : COLORS.surfaceLight, position: "relative", flexShrink: 0, transition: "background 0.15s ease" }}>
+        <span style={{ position: "absolute", top: 2, left: on ? 16 : 2, width: 14, height: 14, borderRadius: 7, background: COLORS.bg, transition: "left 0.15s ease" }} />
+      </span>
+    </button>
+  );
+}
+
+// A tiny live preview of an exciting effect, for the effect dropdown rows.
+function FxDot({ variant, color }) {
+  const base = { width: 16, height: 16, borderRadius: 6, flexShrink: 0, position: "relative", overflow: "hidden", background: withAlpha(color, 0.25), border: `1px solid ${withAlpha(color, 0.6)}` };
+  if (variant === "pulse") return <span className="motion" style={{ ...base, animation: "twodoPulse 2.4s ease-in-out infinite", "--fxLo": withAlpha(color, 0.2), "--fxHi": withAlpha(color, 0.7) }} />;
+  if (variant === "float") return <span className="motion" style={{ ...base, animation: excitingAnim("float") }} />;
+  if (variant === "sparkle") return <span className="motion" style={base}><ExcitingFx variant="sparkle" /></span>;
+  return <span style={{ ...base, boxShadow: glow(color) }} />;
+}
+
+// "Kind of exciting" dropdown — maps to the visual-effect variant.
+function EffectDropdown({ value, onChange, accent }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useOutsideClose(ref, () => setOpen(false), open);
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} className="focusable" style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderRadius: 10, cursor: "pointer", border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, color: COLORS.textPrimary, fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 500 }}>
+        <FxDot variant={value} color={accent} />
+        {FX_LABEL[value] || "Glow"}
+        <span style={{ opacity: 0.5, fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <Popover align="right" width={160}>
+          {EXCITING_FX.map((v) => (
+            <button key={v} onClick={() => { onChange(v); setOpen(false); }} className="focusable" style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: v === value ? withAlpha(accent, 0.15) : "transparent", color: COLORS.textPrimary, fontFamily: "'DM Sans', sans-serif", fontSize: 13, textAlign: "left" }}>
+              <FxDot variant={v} color={accent} /> {FX_LABEL[v]}
+            </button>
+          ))}
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+// Lazy-loaded full emoji picker (own chunk; only fetched when first opened).
+const Picker = lazy(() => import("@emoji-mart/react"));
+function EmojiOverlay({ onPick, onClose }) {
+  const [data, setData] = useState(null);
+  useEffect(() => { import("@emoji-mart/data").then((m) => setData(m.default)); }, []);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()}>
+        <Suspense fallback={<div style={{ padding: 24, color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}>Loading emoji…</div>}>
+          {data && <Picker data={data} theme="dark" previewPosition="none" skinTonePosition="none" onEmojiSelect={(e) => onPick(e.native)} />}
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+function EmojiButton({ value, onChange, accent = COLORS.accent }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="focusable" title="Choose emoji" style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${value ? withAlpha(accent, 0.5) : COLORS.surfaceLight}`, background: value ? withAlpha(accent, 0.12) : COLORS.surface }}>
+        {value || "🙂"}
+      </button>
+      {open && <EmojiOverlay onPick={(e) => { onChange(e); setOpen(false); }} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
 
 // Read/write the time-of-day on an ISO datetime (keeps the date).
 const timeOf = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
@@ -27,6 +122,8 @@ const CalIcon = ({ color = COLORS.accent }) => (
 // instead of the browser's white calendar. Tints to the item's lane `accent`.
 function DatePicker({ value, onChange, accent = COLORS.accent }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useOutsideClose(ref, () => setOpen(false), open);
   const selected = value ? new Date(value) : null;
   const [view, setView] = useState(() => selected || new Date());
   const today = new Date();
@@ -35,7 +132,7 @@ function DatePicker({ value, onChange, accent = COLORS.accent }) {
   const cells = Array.from({ length: 42 }, (_, i) => addDays(startOfWeek(first), i));
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={ref} style={{ position: "relative" }}>
       <button onClick={() => setOpen((o) => !o)} style={{ ...input, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
         <span style={{ color: selected ? COLORS.textPrimary : COLORS.textMuted }}>
           {selected ? `${selected.getDate()} ${MONTHS[selected.getMonth()].slice(0, 3)} ${selected.getFullYear()}` : "Pick a date"}
@@ -43,7 +140,7 @@ function DatePicker({ value, onChange, accent = COLORS.accent }) {
         <CalIcon color={accent} />
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 5, width: 280, background: COLORS.surface, border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 14, padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+        <Popover width={280}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <button onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} style={pickerNav}>‹</button>
             <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, color: COLORS.textPrimary }}>{MONTHS[view.getMonth()]} {view.getFullYear()}</span>
@@ -73,7 +170,7 @@ function DatePicker({ value, onChange, accent = COLORS.accent }) {
             <button onClick={() => { onChange(null); setOpen(false); }} style={{ ...pickerLink, color: accent }}>Clear</button>
             <button onClick={() => { onChange(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12).toISOString()); setView(today); setOpen(false); }} style={{ ...pickerLink, color: accent }}>Today</button>
           </div>
-        </div>
+        </Popover>
       )}
     </div>
   );
@@ -192,16 +289,17 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
             accent={accent}
           />
 
-          {form.type === "task" && columns.length > 0 && (
-            <>
-              <Label>Column</Label>
-              <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} accent={accent} />
-            </>
-          )}
-
-          {/* Tasks: a date is optional — toggle reveals the full date row (defaults to today). */}
+          {/* Tasks: Column chips (wrap when many) with the Date toggle pinned right. */}
           {form.type === "task" && (
-            <Row><Toggle label="Date" on={hasDate} onClick={toggleDate} accent={accent} /></Row>
+            <>
+              {columns.length > 0 && <Label>Column</Label>}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginTop: columns.length > 0 ? 0 : 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {columns.length > 0 && <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} accent={accent} />}
+                </div>
+                <MiniToggle label="Date" on={hasDate} onClick={toggleDate} accent={accent} />
+              </div>
+            </>
           )}
 
           {form.type === "shopping" && (
@@ -309,17 +407,12 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           <Label>Notes</Label>
           <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything else…" rows={3} style={{ ...input, resize: "vertical" }} />
 
-          <Row><Toggle label="Exciting" on={exciting} onClick={() => set("kind", exciting ? "routine" : "exciting")} accent={accent} /></Row>
-          {exciting && (
-            <>
-              <Label>Emoji</Label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {EMOJI.map((em) => (
-                  <button key={em} onClick={() => set("emoji", em)} style={{ width: 40, height: 40, borderRadius: 10, fontSize: 18, cursor: "pointer", border: form.emoji === em ? `2px solid ${accent}` : `1px solid ${COLORS.surfaceLight}`, background: form.emoji === em ? withAlpha(accent, 0.15) : COLORS.surface }}>{em}</button>
-                ))}
-              </div>
-            </>
-          )}
+          {/* Exciting toggle, with the effect picker + emoji icon tucked right when on. */}
+          <Row>
+            <Toggle label="Exciting" on={exciting} onClick={() => set("kind", exciting ? "routine" : "exciting")} accent={accent} />
+            {exciting && <EffectDropdown value={form.exciting_fx || "glow"} onChange={(v) => set("exciting_fx", v)} accent={accent} />}
+            {exciting && <EmojiButton value={form.emoji} onChange={(v) => set("emoji", v)} accent={accent} />}
+          </Row>
 
           {hasDate && (form.type === "task" || form.type === "event") && (
             <Row><Toggle label="Show countdown (sleeps)" on={!!form.countdown} onClick={() => set("countdown", !form.countdown)} accent={accent} /></Row>
@@ -363,7 +456,7 @@ function LinkedAdd({ listId, lane, spaceId, createdBy, onAdded, accent = COLORS.
 function Label({ children }) {
   return <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textSecondary, margin: "12px 0 6px" }}>{children}</div>;
 }
-function Row({ children }) { return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>{children}</div>; }
+function Row({ children }) { return <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 10 }}>{children}</div>; }
 function Segmented({ options, value, onChange, accent = COLORS.accent, compact = false }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>

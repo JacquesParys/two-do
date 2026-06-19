@@ -141,6 +141,7 @@ create table item (
   from_shopping_item_id uuid references item(id) on delete set null,
 
   -- recurrence (embedded; tasks/events). Occurrences are expanded on read, never stored.
+  exciting_fx   text,                               -- exciting "feel": glow (default/null) | pulse | float | sparkle
   recur_freq    text,                               -- 'daily' | 'weekly' | 'monthly' | null
   recur_interval int,                               -- every N periods (default 1); weekly×2 = bi-weekly, custom = any N
   recur_until   timestamptz,                        -- optional end of the series

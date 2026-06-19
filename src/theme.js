@@ -60,6 +60,25 @@ export const SHADOW = {
 // Build a layered glow shadow from any color (exciting items glow in their node color).
 export const glow = (color) => `0 0 0 1px ${withAlpha(color, 0.4)}, 0 4px 18px ${withAlpha(color, 0.26)}`;
 
+// Exciting "feel" variants. All share the static glow surface (excitingStyle);
+// pulse/sparkle add animated overlay layers (<ExcitingFx/>); float bobs the
+// content (excitingAnim). null/undefined ⇒ "glow" (the original look).
+export const EXCITING_FX = ["glow", "pulse", "float", "sparkle"];
+// Element-level surface style for an exciting item: the static glow + border,
+// plus (for "pulse") an animation that breathes the element's OWN box-shadow
+// via CSS vars — its own shadow isn't clipped by the card's overflow:hidden.
+export function excitingStyle(variant, color) {
+  const s = { boxShadow: glow(color), border: `1px solid ${withAlpha(color, 0.45)}` };
+  if (variant === "pulse") {
+    s.animation = "twodoPulse 2.4s ease-in-out infinite";
+    s["--fxLo"] = withAlpha(color, 0.16);
+    s["--fxHi"] = withAlpha(color, 0.5);
+  }
+  return s;
+}
+// Float bobs the content (applied to an inner wrapper, never a drag-transformed element).
+export const excitingAnim = (variant) => (variant === "float" ? "twodoFloat 3.4s ease-in-out infinite" : undefined);
+
 // Motion tokens. Durations in ms; pair with EASE. Honour reduced-motion via
 // the `.motion` className (see injected stylesheet).
 export const MOTION = { fast: 120, base: 200, slow: 320, ease: "cubic-bezier(0.22, 0.61, 0.36, 1)" };
@@ -92,6 +111,11 @@ export function ensureFonts() {
     s.id = "twodo-anim";
     s.textContent = `
       @keyframes twodoFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+      @keyframes twodoPulse {
+        0%,100% { box-shadow: 0 0 0 1px var(--fxLo, transparent), 0 4px 12px var(--fxLo, transparent); }
+        50%     { box-shadow: 0 0 0 1px var(--fxHi, transparent), 0 6px 22px var(--fxHi, transparent); }
+      }
+      @keyframes twodoSparkle { 0% { transform: translateX(-130%) skewX(-12deg); } 100% { transform: translateX(130%) skewX(-12deg); } }
 
       /* No stray text selection on tap/drag; inputs stay selectable. */
       #root { -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; }

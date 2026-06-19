@@ -38,6 +38,7 @@ export default defineConfig({
           if (!id.includes("node_modules")) return;
           if (id.includes("@supabase")) return "supabase";
           if (id.includes("@dnd-kit")) return "dndkit";
+          if (id.includes("emoji-mart")) return "emoji";
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
           return "vendor";
         }

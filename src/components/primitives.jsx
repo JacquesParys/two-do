@@ -1,4 +1,18 @@
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow } from "../theme";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle, excitingAnim } from "../theme";
+
+// Animated exciting-effect overlay layers, rendered inside a card's rounded,
+// overflow-hidden surface. "sparkle" sweeps a sheen; pulse (element box-shadow)
+// and float (content transform) are handled by the host element, not here.
+export const ExcitingFx = ({ variant }) => {
+  if (variant !== "sparkle") return null;
+  return (
+    <span aria-hidden className="motion" style={{
+      position: "absolute", top: 0, bottom: 0, left: 0, width: "55%",
+      background: `linear-gradient(100deg, transparent, ${withAlpha("#FFFFFF", 0.16)}, transparent)`,
+      pointerEvents: "none", animation: "twodoSparkle 2.8s ease-in-out infinite",
+    }} />
+  );
+};
 
 // How imminent an item is (0–1): fills as its start/due time approaches, full
 // at or past it. Used to grow the lane-fill backdrop. Pure-ish (reads now).
@@ -31,10 +45,13 @@ export const LaneFill = ({ color, proximity = 0, completion = 0 }) => (
 // `laneColor` (alias: `stripeColor`) tints the wash. Pass `proximity`/`completion`
 // (0–1) to turn the static wash into the growing two-layer LaneFill.
 // ---------------------------------------------------------------------------
-export const Card = ({ laneColor, stripeColor, exciting, proximity, completion, onClick, className = "", style, children, ...rest }) => {
+export const Card = ({ laneColor, stripeColor, exciting, variant, proximity, completion, onClick, className = "", style, children, ...rest }) => {
   const interactive = !!onClick;
   const lane = laneColor ?? stripeColor;
   const hasFill = proximity != null || completion != null;
+  const exStyle = exciting
+    ? excitingStyle(variant, lane || COLORS.accentGlow)
+    : { boxShadow: SHADOW.md, border: "1px solid transparent" };
   return (
     <div
       onClick={onClick}
@@ -50,8 +67,7 @@ export const Card = ({ laneColor, stripeColor, exciting, proximity, completion, 
         position: "relative",
         borderRadius: RADIUS.lg,
         background: `linear-gradient(160deg, ${COLORS.bgRaised}, ${COLORS.surface})`,
-        boxShadow: exciting ? glow(lane || COLORS.accentGlow) : SHADOW.md,
-        border: exciting ? `1px solid ${withAlpha(lane || COLORS.accentGlow, 0.45)}` : "1px solid transparent",
+        ...exStyle,
         padding: `${SPACE[3]}px ${SPACE[4]}px`,
         boxSizing: "border-box",
         overflow: "hidden",
@@ -72,7 +88,8 @@ export const Card = ({ laneColor, stripeColor, exciting, proximity, completion, 
             }}
           />
         ))}
-      <div style={{ position: "relative" }}>{children}</div>
+      {exciting && <ExcitingFx variant={variant} />}
+      <div className="motion" style={{ position: "relative", animation: exciting ? excitingAnim(variant) : undefined }}>{children}</div>
     </div>
   );
 };

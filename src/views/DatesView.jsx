@@ -203,7 +203,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     const nodeColor = e.color || color;
     const s = sleepsUntil(d);
     return (
-      <Card laneColor={nodeColor} exciting={exciting} proximity={timeProximity(e)} onClick={() => openItem(e)} style={{ padding: `${SPACE[3]}px ${SPACE[3]}px`, marginBottom: SPACE[2] }}>
+      <Card laneColor={nodeColor} exciting={exciting} variant={e.exciting_fx || "glow"} proximity={timeProximity(e)} onClick={() => openItem(e)} style={{ padding: `${SPACE[3]}px ${SPACE[3]}px`, marginBottom: SPACE[2] }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2] }}>
           <span style={{ minWidth: 42, ...TYPE.meta, color: exciting ? nodeColor : COLORS.textMuted, paddingTop: 1 }}>{fmtTime(d)}</span>
           <div style={{ flex: 1, minWidth: 0 }}>

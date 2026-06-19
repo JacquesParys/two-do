@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { COLORS } from "./theme";
+import { COLORS, excitingStyle } from "./theme";
 import { parseBrainDump, TYPE_LABEL } from "./lib/parser.js";
 import { laneLabel, laneColor } from "./lib/lanes.js";
 import { createItem } from "./lib/data.js";
@@ -102,6 +102,9 @@ function DraftCard({ draft, ctx, onAccept, onDismiss }) {
   const exciting = draft.kind === "exciting";
   const label = ctx ? laneLabel(draft.lane, ctx.viewerSlot, ctx.space) : draft.lane;
   const color = ctx ? laneColor(draft.lane, ctx.people, COLORS) : COLORS.laneUs;
+  const nodeColor = draft.color || color;
+  // Match the live exciting treatment (node-coloured glow), not a fixed coral.
+  const ex = exciting ? excitingStyle(undefined, nodeColor) : null;
 
   function onDown(e) { start.current = e.clientX; }
   function onMove(e) { if (start.current != null) setDx(e.clientX - start.current); }
@@ -129,8 +132,8 @@ function DraftCard({ draft, ctx, onAccept, onDismiss }) {
           background: COLORS.surface,
           borderRadius: 14,
           padding: "14px 16px",
-          border: exciting ? `1.5px solid ${COLORS.accentGlow}` : `1px solid ${COLORS.surfaceLight}`,
-          boxShadow: exciting ? `0 0 16px ${COLORS.accentMuted}` : "none",
+          border: ex ? ex.border : `1px solid ${COLORS.surfaceLight}`,
+          boxShadow: ex ? ex.boxShadow : "none",
           transform: `translateX(${dx}px)`,
           transition: start.current == null ? "transform 0.2s ease" : "none",
           touchAction: "pan-y",
