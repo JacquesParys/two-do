@@ -209,10 +209,6 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
   const weekStart = startOfWeek(ref);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const headerLabel =
-    mode === "week" ? `${weekDays[0].getDate()}–${weekDays[6].getDate()} ${MONTHS[weekDays[6].getMonth()].slice(0, 3)} ${weekDays[6].getFullYear()}`
-    : mode === "day" ? `${ref.getDate()} ${MONTHS[ref.getMonth()].slice(0, 3)} ${ref.getFullYear()}`
-    : `${MONTHS[visibleMonth.getMonth()]} ${visibleMonth.getFullYear()}`;
 
   // The big serif date heading, flanked by nav arrows — shared by Day and Week.
   // Day mode advances by a day, Week mode by a week (handled in `step`).
@@ -226,9 +222,24 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     </div>
   );
 
+  // Month view scrolls an infinite month list; the arrows jump to the prev/next
+  // month (the visible month is tracked by an IntersectionObserver per block).
+  const goMonth = (dir) => {
+    const el = document.getElementById(monthId(addMonths(visibleMonth, dir)));
+    el?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+  const monthFullHeader = (
+    <div style={{ display: "flex", alignItems: "center", gap: SPACE[3], marginBottom: 14 }}>
+      <IconButton onClick={() => goMonth(-1)} label="Previous month" size={32} icon={<Chevron dir="left" />} />
+      <span style={{ flex: 1, textAlign: "center", fontFamily: "'Fraunces', serif", fontSize: 18, color: COLORS.textPrimary }}>
+        {MONTHS[visibleMonth.getMonth()]} {visibleMonth.getFullYear()}
+      </span>
+      <IconButton onClick={() => goMonth(1)} label="Next month" size={32} icon={<Chevron dir="right" />} />
+    </div>
+  );
+
   const header = (
-    <div style={{ display: "flex", justifyContent: mode === "month" ? "space-between" : "flex-end", alignItems: "center", marginBottom: 10 }}>
-      {mode === "month" && <span style={{ ...TYPE.body, fontWeight: 500, color: COLORS.textPrimary }}>{headerLabel}</span>}
+    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: 10 }}>
       <div style={{ display: "flex", background: COLORS.surface, borderRadius: RADIUS.md, padding: 2 }}>
         {["Day", "Week", "Month"].map((m) => {
           const on = mode === m.toLowerCase();
@@ -262,7 +273,8 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     return (
       <div style={{ padding: "0 8px" }}>
         {header}
-        <div ref={monthScrollRef} className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto" }}>
+        {monthFullHeader}
+        <div ref={monthScrollRef} className="no-sb" style={{ height: "calc(100dvh - 316px)", overflowY: "auto" }}>
           {months.map((m) => (
             <MonthBlock
               key={monthId(m)}
