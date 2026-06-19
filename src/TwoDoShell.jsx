@@ -234,12 +234,10 @@ export default function TwoDoShell() {
         </button>
       </div>
 
-      {/* Lane filter — applies to Dates / Cards / Lists. The feather scrim above
-          fades the scrolling content into the bar's background (no hard edge). */}
-      <div style={{ position: "relative", padding: "8px 16px 12px", flexShrink: 0, background: COLORS.bg }}>
-        <div aria-hidden style={{ position: "absolute", left: 0, right: 0, top: -20, height: 20, background: `linear-gradient(to top, ${COLORS.bg}, transparent)`, pointerEvents: "none" }} />
-        <LaneFilter value={laneFilter} onChange={setLaneFilter} ctx={ctx} style={{ marginBottom: 0 }} />
-      </div>
+      {/* Lane filter — applies to Dates / Cards / Lists. The bar carries its own
+          background + feather scrim (see LaneFilter), so the fade is global and
+          consistent across every view. */}
+      <LaneFilter value={laneFilter} onChange={setLaneFilter} ctx={ctx} />
 
       {/* Bottom input bar */}
       <div

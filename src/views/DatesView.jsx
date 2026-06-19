@@ -366,9 +366,11 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
   return (
     <div style={{ padding: "0 8px" }}>
       {header}
-      {/* Padding gives the exciting glow (bleeds ~20-30px past a card) room before
-          the scroll container clips at its edges. */}
-      <div className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto", overflowX: "hidden", padding: "12px 16px" }}>{body}</div>
+      {/* Padding is the only lever here: a vertical scroll container always clips
+          at its padding box (overflow-x can't be 'visible' alongside overflow-y
+          'auto'), so the gutter must be ~as wide as the glow bleed (~28px) or the
+          exciting fx get cut off left/right. */}
+      <div className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto", overflowX: "hidden", padding: "16px 28px" }}>{body}</div>
     </div>
   );
 };

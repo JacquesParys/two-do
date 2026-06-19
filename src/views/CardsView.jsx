@@ -348,9 +348,9 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
             ))}
           </div>
           {/* Horizontal kanban: ~1.5 columns visible, snap, all mounted for cross-column
-              drag. Generous padding all round so the exciting glow/shadow (which bleeds
-              ~20-30px outside a card) isn't clipped at the scroll container's edges. */}
-          <div className="no-sb" style={{ display: "flex", gap: SPACE[4], overflowX: "auto", scrollSnapType: activeId ? "none" : "x mandatory", WebkitOverflowScrolling: "touch", padding: `${SPACE[4]}px ${SPACE[4]}px ${SPACE[5]}px` }}>
+              drag. Padding ~as wide as the glow bleed (~28px) so the exciting/overdue
+              fx aren't clipped at the scroll container's edges. */}
+          <div className="no-sb" style={{ display: "flex", gap: SPACE[4], overflowX: "auto", scrollSnapType: activeId ? "none" : "x mandatory", WebkitOverflowScrolling: "touch", padding: `${SPACE[5]}px 28px ${SPACE[6]}px` }}>
             {columns.map((col, ci) => {
               const ids = vis(containers[col.id] || []);
               return (
@@ -379,7 +379,7 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
   }
 
   return (
-    <div style={{ padding: isDesktop ? `0 ${SPACE[5]}px` : `0 ${SPACE[4]}px` }}>
+    <div style={{ padding: isDesktop ? "0 28px" : `0 ${SPACE[4]}px` }}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: SPACE[3] }}>
         <PillButton variant="ghost" onClick={() => setShowCols(true)}>✎ Edit columns</PillButton>
       </div>
