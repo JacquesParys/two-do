@@ -323,7 +323,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
             ))}
           </div>
           <DayTimeline day={ref} items={eventsOn(ref)} ctx={ctx} summaries={summaries} onOpenItem={openItem} onChange={persist}
-            onCreate={(mins) => onOpenItem?.({ type: "event", kind: "routine", lane: laneFilter !== "all" ? laneFilter : SLOTS.SHARED, start_at: atMinutes(ref, mins).toISOString(), end_at: atMinutes(ref, mins + 60).toISOString() })} />
+            onCreate={(startMin, endMin) => onOpenItem?.({ type: "event", kind: "routine", lane: laneFilter !== "all" ? laneFilter : SLOTS.SHARED, start_at: atMinutes(ref, startMin).toISOString(), end_at: atMinutes(ref, endMin).toISOString() })} />
         </div>
       </div>
     );

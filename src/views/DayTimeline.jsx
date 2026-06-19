@@ -97,11 +97,14 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
       }
       const d = dragRef.current;
       if (!d) return;
-      if (d.it._recurring) return; // recurring occurrences are tap-only
+      if (d.it?._recurring) return; // recurring occurrences are tap-only
       const dy = e.clientY - d.startY;
       const moved = d.moved || Math.abs(dy) > 4;
       let next;
-      if (d.mode === "resizeBottom") {
+      if (d.mode === "create") {
+        const curMin = clamp(snap(d.startMin + dy / pxPerMin), 0, DAY_MIN);
+        next = { ...d, curMin, moved };
+      } else if (d.mode === "resizeBottom") {
         const durMin = clamp(snap(d.origDurMin + dy / pxPerMin), MIN_DUR, DAY_MIN - d.origTopMin);
         next = { ...d, durMin, moved };
       } else if (d.mode === "resizeTop") {
@@ -122,7 +125,10 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
         clearTimeout(h.timer);
         holdRef.current = null;
         const y = e && typeof e.clientY === "number" ? e.clientY : h.lastY;
-        if (Math.abs(y - h.y) <= 8) propsRef.current.onOpenItem?.(h.it);
+        if (Math.abs(y - h.y) <= 8) {
+          if (h.create) propsRef.current.onCreate?.(h.startMin, h.startMin + DEFAULT_DUR);
+          else propsRef.current.onOpenItem?.(h.it);
+        }
         return;
       }
       const d = dragRef.current;
@@ -130,6 +136,12 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
       dragRef.current = null;
       setDrag(null);
       const { day: cur, onChange: change, onOpenItem: open } = propsRef.current;
+      if (d.mode === "create") {
+        const lo = Math.min(d.startMin, d.curMin), hi = Math.max(d.startMin, d.curMin);
+        if (!d.moved) propsRef.current.onCreate?.(lo, lo + DEFAULT_DUR);
+        else propsRef.current.onCreate?.(lo, Math.max(hi, lo + MIN_DUR));
+        return;
+      }
       if (d.it._recurring) { open?.(d.it); return; } // open the master series, never persist an occurrence
       if (!d.moved) { open?.(d.it); return; }
       const isEvent = !!d.it.start_at;
@@ -154,7 +166,7 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
     };
     // Non-passive: once a touch drag is actually active, stop the page from scrolling.
     const onTouchMove = (e) => {
-      if (dragRef.current && !dragRef.current.it._recurring && e.cancelable) e.preventDefault();
+      if (dragRef.current && !dragRef.current.it?._recurring && e.cancelable) e.preventDefault();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", end);
@@ -197,17 +209,38 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
     holdRef.current = { it, x: e.clientX, y: e.clientY, lastY: e.clientY, timer };
   }
 
-  // Tap an empty slot in the events column → create an event at that (snapped) time.
-  // Ignored when the tap lands on a block (target !== the column itself).
-  function onEmptyTap(e) {
+  function beginCreate(startMin, startY) {
+    const d = { mode: "create", startMin, curMin: startMin, startY, moved: false };
+    dragRef.current = d;
+    setDrag(d);
+  }
+
+  // Press/tap-drag an empty slot to draw a new event (ghost follows the finger);
+  // a plain tap makes a default-length one. Ignored when it lands on a block.
+  function onEmptyPointerDown(e) {
     if (e.target !== e.currentTarget) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const mins = clamp(snap((e.clientY - rect.top) / pxPerMin), 0, DAY_MIN - DEFAULT_DUR);
-    propsRef.current.onCreate?.(mins);
+    const startMin = clamp(snap((e.clientY - rect.top) / pxPerMin), 0, DAY_MIN);
+    if (e.pointerType === "mouse") {
+      e.preventDefault();
+      beginCreate(startMin, e.clientY);
+      return;
+    }
+    const el = e.currentTarget;
+    const pointerId = e.pointerId;
+    const timer = setTimeout(() => {
+      const h = holdRef.current;
+      if (!h) return;
+      holdRef.current = null;
+      try { el.setPointerCapture(pointerId); } catch { /* capture is best-effort */ }
+      if (navigator.vibrate) navigator.vibrate(8);
+      beginCreate(h.startMin, h.y);
+    }, 220);
+    holdRef.current = { create: true, startMin, x: e.clientX, y: e.clientY, lastY: e.clientY, timer };
   }
 
   const packed = packColumns(toBlocks(items || []));
-  const live = (id) => (drag && drag.it.id === id ? drag : null);
+  const live = (id) => (drag && drag.it && drag.it.id === id ? drag : null);
   const lc = (it) => (ctx ? resolveLaneColor(it.lane, ctx.people, COLORS) : COLORS.laneUs);
   const ll = (it) => (ctx ? resolveLaneLabel(it.lane, ctx.viewerSlot, ctx.space) : it.lane);
 
@@ -248,8 +281,17 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
         )}
 
         {/* Items (right of the hour gutter) — one treatment for events and tasks.
-            Tapping the empty column (not a block) creates an event at that time. */}
-        <div onClick={onEmptyTap} style={{ position: "absolute", left: GUTTER, right: 6, top: 0, bottom: 0 }}>
+            Press/tap-drag the empty column (not a block) to draw a new event. */}
+        <div onPointerDown={onEmptyPointerDown} style={{ position: "absolute", left: GUTTER, right: 6, top: 0, bottom: 0, touchAction: drag && drag.mode === "create" ? "none" : "pan-y" }}>
+          {/* Ghost of the event being drawn */}
+          {drag && drag.mode === "create" && (() => {
+            const lo = Math.min(drag.startMin, drag.curMin), hi = Math.max(drag.startMin, drag.curMin);
+            return (
+              <div style={{ position: "absolute", top: lo * pxPerMin, height: Math.max((hi - lo) * pxPerMin, 22), left: 0, right: 0, borderRadius: RADIUS.lg, background: withAlpha(COLORS.accent, 0.16), border: `1px dashed ${withAlpha(COLORS.accent, 0.6)}`, pointerEvents: "none", zIndex: 8, display: "flex", alignItems: "center", justifyContent: "center", ...TYPE.caption, color: COLORS.accent }}>
+                {fmtMin(lo)}–{fmtMin(hi > lo ? hi : lo + DEFAULT_DUR)}
+              </div>
+            );
+          })()}
           {packed.map((b) => {
             const d = live(b.it.id);
             const topMin = d ? d.topMin : b.startMin;

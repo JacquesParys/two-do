@@ -148,6 +148,9 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "14px 16px 22px" }}>
           <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" style={{ ...input, fontSize: 16, fontWeight: 600 }} />
 
+          <Label>Lane</Label>
+          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} />
+
           <Label>Type</Label>
           <Segmented
             options={[{ value: "task", label: "Task" }, { value: "event", label: "Event" }, { value: "shopping", label: "Shopping" }, { value: "expense", label: "Expense" }]}
@@ -170,14 +173,18 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
               <DatePicker value={form[dateField]} onChange={(v) => set(dateField, v)} />
               {hasDate && (
                 <>
-                  <Label>{form.type === "event" ? "Start time" : "Time"}</Label>
-                  <input type="time" value={timeOf(form[dateField])} onChange={(e) => set(dateField, withTime(form[dateField], e.target.value))} style={timeInput} />
-                  {form.type === "event" && (
-                    <>
-                      <Label>End time</Label>
-                      <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form.start_at, e.target.value))} style={timeInput} />
-                    </>
-                  )}
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 110px", minWidth: 0 }}>
+                      <Label>{form.type === "event" ? "Start time" : "Time"}</Label>
+                      <input type="time" value={timeOf(form[dateField])} onChange={(e) => set(dateField, withTime(form[dateField], e.target.value))} style={timeInput} />
+                    </div>
+                    {form.type === "event" && (
+                      <div style={{ flex: "1 1 110px", minWidth: 0 }}>
+                        <Label>End time</Label>
+                        <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form.start_at, e.target.value))} style={timeInput} />
+                      </div>
+                    )}
+                  </div>
                   <Label>Repeats</Label>
                   <Segmented
                     options={[{ value: "", label: "None" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }]}
@@ -201,9 +208,6 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
               <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} />
             </>
           )}
-
-          <Label>Lane</Label>
-          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} />
 
           {(form.type === "task" || form.type === "event") && (
             <>
