@@ -81,6 +81,7 @@ function SortableCard({ id, display, onOpen }) {
       {...attributes}
       {...listeners}
       onClick={onOpen}
+      onMouseDown={(e) => e.preventDefault()}
       className="focusable pressable motion"
       style={{
         transform: CSS.Transform.toString(transform),
@@ -89,6 +90,8 @@ function SortableCard({ id, display, onOpen }) {
         marginBottom: SPACE[3],
         cursor: "grab",
         touchAction: "manipulation",
+        userSelect: "none",
+        WebkitUserSelect: "none",
         borderRadius: RADIUS.lg,
       }}
     >

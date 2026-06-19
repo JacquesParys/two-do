@@ -17,7 +17,14 @@ function DroppableDay({ id, children }) {
 }
 function DraggableEvent({ id, children }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id });
-  return <div ref={setNodeRef} {...listeners} {...attributes} className="focusable" style={{ opacity: isDragging ? 0.4 : 1, touchAction: "manipulation" }}>{children}</div>;
+  // preventDefault on mousedown stops the browser starting a text selection in
+  // the pre-activation window before dnd-kit takes over (desktop drag).
+  return (
+    <div ref={setNodeRef} {...listeners} {...attributes} className="focusable" onMouseDown={(e) => e.preventDefault()}
+      style={{ opacity: isDragging ? 0.4 : 1, touchAction: "manipulation", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", cursor: isDragging ? "grabbing" : "grab" }}>
+      {children}
+    </div>
+  );
 }
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -279,7 +286,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     body = (
       <>
         {fullHeader}
-        <DndContext sensors={weekSensors} autoScroll={false} collisionDetection={closestCenter} onDragStart={(e) => setWeekActiveId(e.active.id)} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
+        <DndContext sensors={weekSensors} autoScroll={false} collisionDetection={closestCenter} onDragStart={(e) => { window.getSelection?.()?.removeAllRanges?.(); setWeekActiveId(e.active.id); }} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {weekDays.map((day, i) => {
               const evs = eventsOn(day);
