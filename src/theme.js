@@ -19,6 +19,8 @@ export const COLORS = {
   laneUs: "#E8896B", // coral — the shared "Us" lane
   green: "#8FBFA3",
   greenMuted: "rgba(143,191,163,0.16)",
+  amber: "#E8C16B", // 1–2 days overdue (keep-reminding) — a warm nudge
+  red: "#E86B6B", // 3+ days overdue (keep-reminding) — an urgent flag
 };
 
 // Lane slot → stripe/accent color (the layered card's edge-stripe).

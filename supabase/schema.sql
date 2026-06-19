@@ -27,7 +27,7 @@ create type lane_slot        as enum ('partner_a', 'partner_b', 'shared');
 create type item_type        as enum ('task', 'event', 'shopping', 'expense');
 create type item_kind        as enum ('routine', 'exciting');
 create type task_state       as enum ('open', 'done', 'parked');
-create type column_role      as enum ('none', 'done', 'someday');
+create type column_role      as enum ('none', 'done', 'someday', 'soon', 'today');
 create type cost_attribution as enum ('partner_a', 'partner_b', 'split');
 create type bill_frequency   as enum ('weekly', 'monthly', 'quarterly', 'yearly');
 create type label_style      as enum ('me_you_us', 'this_that_both', 'custom', 'players');
@@ -234,8 +234,8 @@ language plpgsql as $$
 begin
   insert into board_column (space_id, label, ord, role) values
     (new.id, 'Someday', 0, 'someday'),
-    (new.id, 'Soon',    1, 'none'),
-    (new.id, 'Today',   2, 'none'),
+    (new.id, 'Soon',    1, 'soon'),
+    (new.id, 'Today',   2, 'today'),
     (new.id, 'Done',    3, 'done');
   insert into list (space_id, name, emoji, has_stores, ord) values
     (new.id, 'Groceries',       '🛒', true,  0),

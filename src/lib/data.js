@@ -25,8 +25,8 @@ const mock = {
   viewerSlot: SLOTS.A,
   columns: [
     { id: "c3", label: "Someday", ord: 0, role: "someday" },
-    { id: "c2", label: "Soon", ord: 1, role: "none" },
-    { id: "c1", label: "Today", ord: 2, role: "none" },
+    { id: "c2", label: "Soon", ord: 1, role: "soon" },
+    { id: "c1", label: "Today", ord: 2, role: "today" },
     { id: "c4", label: "Done", ord: 3, role: "done" },
   ],
   items: [
@@ -45,6 +45,10 @@ const mock = {
     { id: "t11", type: "task", title: "Tidy the garage", lane: SLOTS.SHARED, kind: "routine", column_id: "c4", ord: 1, state: "done" },
     { id: "t12", type: "task", title: "Email the accountant", lane: SLOTS.A, kind: "routine", column_id: "c1", ord: 3 },
     { id: "t13", type: "task", title: "Defrost something for dinner", lane: SLOTS.SHARED, kind: "routine", column_id: "c1", ord: 4 },
+    // "Keep reminding me" tasks gone overdue — derived placement escalates them:
+    // ovd1 (2 days late) → Soon + amber glow; ovd2 (4 days late) → Someday + red glow.
+    { id: "ovd1", type: "task", title: "Renew car tax", lane: SLOTS.A, kind: "routine", column_id: "c1", ord: 5, due_at: isoOffset(-2, 10, 0), persistent_until_done: true },
+    { id: "ovd2", type: "task", title: "Cancel the free trial", lane: SLOTS.B, kind: "routine", column_id: "c1", ord: 6, due_at: isoOffset(-4, 10, 0), persistent_until_done: true },
     { id: "t14", type: "task", title: "Service the car", lane: SLOTS.B, kind: "routine", column_id: "c2", ord: 3, due_at: isoOffset(8, 9, 0) },
     { id: "t15", type: "task", title: "Write best man speech", lane: SLOTS.A, kind: "exciting", emoji: "🎤", column_id: "c2", ord: 4 },
     { id: "t16", type: "task", title: "Learn to surf", lane: SLOTS.SHARED, kind: "exciting", emoji: "🏄", column_id: "c3", ord: 3 },

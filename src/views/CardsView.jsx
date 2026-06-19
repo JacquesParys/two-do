@@ -12,7 +12,8 @@ import {
   Card, LaneBadge, SleepsChip, ProgressBar, Chip, SectionLabel, PillButton, EmptyState, CalendarIcon, LinkedListChips,
 } from "../components/primitives.jsx";
 import { adaptCard } from "./helpers.js";
-import { getBootstrap, listColumns, listCards, getSubtaskProgress, getListSummaries, moveCards, subscribe } from "../lib/data.js";
+import { getBootstrap, listColumns, listCards, listCalendar, getSubtaskProgress, getListSummaries, moveCards, deleteItem, subscribe } from "../lib/data.js";
+import { findRoleColumn, overdueReminder, eventBoardRole } from "../lib/placement.js";
 import { SLOTS } from "../lib/lanes.js";
 import ColumnsEditor from "../ColumnsEditor.jsx";
 
@@ -48,11 +49,25 @@ function emptyLine(role) {
   return "Nothing due. Suspiciously calm — enjoy it or fill it.";
 }
 
-function CardBody({ display, dragging }) {
+function CardBody({ display, dragging, canDelete, onDelete }) {
   const { title, laneLabel, laneColor, nodeColor, due, subtasks, exciting, variant, seed, emoji, sleeps, proximity, completion } = display;
   return (
     <Card stripeColor={nodeColor} exciting={exciting} variant={variant} seed={seed} proximity={proximity} completion={completion} style={dragging ? { boxShadow: SHADOW.lg } : undefined}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2] }}>
+      {canDelete && (
+        // Quick delete for Done cards. stopPropagation so it neither starts a
+        // drag (PointerSensor) nor opens the editor (the card's onClick).
+        <button
+          aria-label="Delete card"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+          className="pressable focusable"
+          style={{ position: "absolute", top: 5, right: 5, zIndex: 4, width: 24, height: 24, borderRadius: RADIUS.pill, border: "none", background: withAlpha(COLORS.bg, 0.4), color: COLORS.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, lineHeight: 1, padding: 0 }}
+        >
+          ×
+        </button>
+      )}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: SPACE[2], paddingRight: canDelete ? 26 : 0 }}>
         {emoji && <span style={{ fontSize: 16, lineHeight: 1.2 }}>{emoji}</span>}
         <span style={{ ...TYPE.title, color: COLORS.textPrimary, flex: 1 }}>{title}</span>
         <LaneBadge label={laneLabel} color={laneColor} />
@@ -73,7 +88,7 @@ function CardBody({ display, dragging }) {
   );
 }
 
-function SortableCard({ id, display, onOpen }) {
+function SortableCard({ id, display, onOpen, canDelete, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (
     <div
@@ -95,7 +110,7 @@ function SortableCard({ id, display, onOpen }) {
         borderRadius: RADIUS.lg,
       }}
     >
-      <CardBody display={display} />
+      <CardBody display={display} canDelete={canDelete} onDelete={onDelete} />
     </div>
   );
 }
@@ -123,6 +138,11 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
   const [columns, setColumns] = useState([]);
   const [cards, setCards] = useState([]);
   const [containers, setContainers] = useState({});
+  // Derived per-load: amber/red glow per overdue card id, and the set of ids
+  // shown by date-derivation (injected events + relocated overdue tasks) so a
+  // drag elsewhere doesn't accidentally persist their derived column_id.
+  const [glowMap, setGlowMap] = useState({});
+  const [derivedIds, setDerivedIds] = useState(() => new Set());
   const [activeId, setActiveId] = useState(null);
   const [activeCol, setActiveCol] = useState(0);
   const [showCols, setShowCols] = useState(false);
@@ -136,15 +156,46 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
   async function load() {
     try {
       setError(false);
-      const [boot, cols, items, sums] = await Promise.all([getBootstrap(), listColumns(), listCards(), getListSummaries()]);
+      const [boot, cols, items, cal, sums] = await Promise.all([getBootstrap(), listColumns(), listCards(), listCalendar(), getListSummaries()]);
+      const now = new Date();
+      const roleOf = (id) => cols.find((c) => c.id === id)?.role;
+
+      // Events not already carded that should surface on the board by proximity.
+      const injected = cal.filter((e) => eventBoardRole(e, now));
+      const allCards = items.concat(injected);
       // Attach subtask progress (done/total over child items) for the card footer.
-      const progress = await getSubtaskProgress(items.map((i) => i.id));
-      items.forEach((it) => { it.subtasks = progress[it.id] || null; });
-      setCtx(boot); setColumns(cols); setCards(items); setSummaries(sums);
+      const progress = await getSubtaskProgress(allCards.map((i) => i.id));
+      allCards.forEach((it) => { it.subtasks = progress[it.id] || null; });
+      setCtx(boot); setColumns(cols); setCards(allCards); setSummaries(sums);
+
+      // Group real cards by their stored column_id.
       const grp = {};
       cols.forEach((c) => { grp[c.id] = []; });
       items.slice().sort((a, b) => (a.ord ?? 0) - (b.ord ?? 0)).forEach((it) => { (grp[it.column_id] = grp[it.column_id] || []).push(it.id); });
+
+      // Derived overrides (date-driven, never stored): escalate overdue
+      // "keep reminding" tasks, then drop in the near-future event cards.
+      const glows = {};
+      const derived = new Set();
+      items.forEach((it) => {
+        const od = overdueReminder(it, now);
+        if (!od || roleOf(it.column_id) === "done") return; // never nag Done cards
+        glows[it.id] = od.glow;
+        const target = findRoleColumn(cols, od.role);
+        if (!target || target.id === it.column_id) return; // glow in place
+        const src = grp[it.column_id];
+        if (src) { const i = src.indexOf(it.id); if (i >= 0) src.splice(i, 1); }
+        (grp[target.id] = grp[target.id] || []).push(it.id);
+        derived.add(it.id);
+      });
+      injected.forEach((e) => {
+        const target = findRoleColumn(cols, eventBoardRole(e, now));
+        if (target) { (grp[target.id] = grp[target.id] || []).push(e.id); derived.add(e.id); }
+      });
+
       setContainers(grp);
+      setGlowMap(glows);
+      setDerivedIds(derived);
       setActiveCol((i) => Math.min(i, Math.max(0, cols.length - 1)));
     } catch (e) {
       setError(true);
@@ -206,12 +257,37 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
       if (oldIdx !== newIdx && newIdx >= 0) { next = { ...containers, [to]: arrayMove(ids, oldIdx, newIdx) }; setContainers(next); }
     }
     const updates = [];
-    Object.entries(next).forEach(([colId, ids]) => ids.forEach((id, i) => updates.push({ id, column_id: colId, ord: i })));
+    Object.entries(next).forEach(([colId, ids]) => ids.forEach((id, i) => {
+      // Keep date-derived cards derived: only persist one if it's the card the
+      // user actually dragged (which pins it with a real column_id from now on).
+      if (id !== active.id && derivedIds.has(id)) return;
+      updates.push({ id, column_id: colId, ord: i });
+    }));
     await moveCards(updates);
     onChanged?.();
   }
 
-  const renderCard = (id) => <SortableCard key={id} id={id} display={adaptCard(cardById[id], ctx, summaries)} onOpen={() => onOpenItem?.(cardById[id])} />;
+  // Soft-delete a card (the Done-column "×"). Optimistically drop it, then persist.
+  async function removeCard(id) {
+    setContainers((prev) => {
+      const next = {};
+      for (const k of Object.keys(prev)) next[k] = prev[k].filter((x) => x !== id);
+      return next;
+    });
+    await deleteItem(id);
+    onChanged?.();
+  }
+
+  const renderCard = (id, col) => (
+    <SortableCard
+      key={id}
+      id={id}
+      display={adaptCard(cardById[id], ctx, summaries, { overdueGlow: glowMap[id] })}
+      onOpen={() => onOpenItem?.(cardById[id])}
+      canDelete={col?.role === "done"}
+      onDelete={() => removeCard(id)}
+    />
+  );
 
   // Open the editor for a new card pre-placed in this column; default its lane
   // to the active lane filter when one is set, else shared.
@@ -226,7 +302,7 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
   const dnd = (children) => (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
       {children}
-      <DragOverlay>{activeId ? <CardBody display={adaptCard(cardById[activeId], ctx, summaries)} dragging /> : null}</DragOverlay>
+      <DragOverlay>{activeId ? <CardBody display={adaptCard(cardById[activeId], ctx, summaries, { overdueGlow: glowMap[activeId] })} dragging /> : null}</DragOverlay>
     </DndContext>
   );
 
@@ -249,7 +325,7 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
                   <Column id={col.id} empty={ids.length === 0}>
                     <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                       {ids.length
-                        ? ids.map(renderCard)
+                        ? ids.map((id) => renderCard(id, col))
                         : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
                     </SortableContext>
                   </Column>
@@ -287,7 +363,7 @@ const CardsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
                     <Column id={col.id} empty={ids.length === 0}>
                       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                         {ids.length
-                          ? ids.map(renderCard)
+                          ? ids.map((id) => renderCard(id, col))
                           : <EmptyState style={{ padding: "20px 12px", fontSize: 13 }}>{emptyLine(col.role)}</EmptyState>}
                       </SortableContext>
                     </Column>

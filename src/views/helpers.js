@@ -22,20 +22,23 @@ export function formatDue(dueAt) {
 
 // Adapt a data-layer item into the props the kanban card expects.
 
-export function adaptCard(item, ctx, summaries = {}) {
-  const exciting = item.kind === "exciting";
-  const { due, sleeps } = formatDue(item.due_at);
+export function adaptCard(item, ctx, summaries = {}, opts = {}) {
+  // An overdue "keep reminding me" task overrides the card's normal look with a
+  // warning glow: amber (1–2 days late, slow breathe) or red (3+, urgent pulse).
+  const overdueGlow = opts.overdueGlow; // 'amber' | 'red' | undefined
+  const exciting = overdueGlow ? true : item.kind === "exciting";
+  const { due, sleeps } = formatDue(item.due_at || item.start_at);
   const laneColor = resolveLaneColor(item.lane, ctx.people, COLORS);
   return {
     id: item.id,
     title: item.title,
     laneLabel: resolveLaneLabel(item.lane, ctx.viewerSlot, ctx.space),
     laneColor,
-    nodeColor: item.color || laneColor,
+    nodeColor: overdueGlow ? COLORS[overdueGlow] : item.color || laneColor,
     due,
     sleeps: item.countdown && sleeps && sleeps > 0 ? sleeps : null,
     exciting,
-    variant: item.exciting_fx || "glow",
+    variant: overdueGlow ? (overdueGlow === "red" ? "pulse" : "glow") : item.exciting_fx || "glow",
     seed: fxSeed(item.id),
     emoji: item.emoji,
     subtasks: item.subtasks || null,
