@@ -68,29 +68,44 @@ function MonthBlock({ date, rootRef, eventsOn, onDayClick, onOpenItem, ctx, onVi
   return (
     <div ref={elRef} id={monthId(date)} style={{ opacity, transition: "opacity 0.25s ease", marginBottom: 22 }}>
       <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, color: COLORS.textPrimary, padding: "4px 2px 10px" }}>{MONTHS[date.getMonth()]} {date.getFullYear()}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 0, marginBottom: 4 }}>
         {DOW.map((d) => <div key={d} style={dowStyle}>{d}</div>)}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 0 }}>
         {cells.map((day, i) => {
           const inMonth = day.getMonth() === date.getMonth();
           const evs = eventsOn(day);
+          // Interior dividing lines only — no border on the outer right column / bottom row.
+          const divider = `1px solid ${withAlpha(COLORS.surfaceLight, 0.55)}`;
           return (
-            <div key={i} onClick={() => onDayClick(day)} style={{ minHeight: 58, minWidth: 0, borderRadius: 8, cursor: "pointer", padding: "5px 2px", opacity: inMonth ? 1 : 0.35, overflow: "hidden" }}>
+            <div key={i} onClick={() => onDayClick(day)} style={{ minHeight: 74, minWidth: 0, cursor: "pointer", padding: "4px 3px", opacity: inMonth ? 1 : 0.35, overflow: "hidden", borderRight: i % 7 !== 6 ? divider : "none", borderBottom: i < 35 ? divider : "none" }}>
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <div style={{ width: 24, height: 24, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : "transparent" }}>{day.getDate()}</div>
               </div>
               <div style={{ marginTop: 3, display: "flex", flexDirection: "column", gap: 2 }}>
-                {evs.slice(0, 3).map((e) => {
-                  const color = ctx ? resolveLaneColor(e.lane, ctx.people, COLORS) : COLORS.laneUs;
+                {evs.slice(0, 4).map((e) => {
+                  const laneCol = ctx ? resolveLaneColor(e.lane, ctx.people, COLORS) : COLORS.laneUs;
+                  const nodeCol = e.color || laneCol;
+                  const exciting = e.kind === "exciting";
+                  const recurring = e._recurring; // repeats clutter — fade them down
+                  const open = (ev) => { ev.stopPropagation(); onOpenItem?.(e); };
+                  // Exciting → a colored chip that pops; everything else → a dot + label,
+                  // with recurring items in faded white so they read as background.
+                  if (exciting) {
+                    return (
+                      <div key={e.id} onClick={open} title={e.title} style={{ fontSize: 10, fontFamily: "'DM Sans', sans-serif", color: COLORS.textPrimary, background: withAlpha(nodeCol, 0.22), borderRadius: 5, padding: "1px 5px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", cursor: "pointer", opacity: recurring ? 0.6 : 1 }}>
+                        {e.emoji ? e.emoji + " " : ""}{e.title}
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={e.id} onClick={(ev) => { ev.stopPropagation(); onOpenItem?.(e); }} title={e.title} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "'DM Sans', sans-serif", color: e.kind === "exciting" ? COLORS.accent : COLORS.textSecondary, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", cursor: "pointer" }}>
-                      <span style={{ width: 5, height: 5, borderRadius: 3, background: color, flexShrink: 0 }} />
+                    <div key={e.id} onClick={open} title={e.title} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "'DM Sans', sans-serif", color: recurring ? COLORS.textPrimary : COLORS.textSecondary, opacity: recurring ? 0.55 : 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", cursor: "pointer" }}>
+                      <span style={{ width: 5, height: 5, borderRadius: 3, background: nodeCol, flexShrink: 0 }} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{e.emoji ? e.emoji + " " : ""}{e.title}</span>
                     </div>
                   );
                 })}
-                {evs.length > 3 && <span style={{ fontSize: 9, color: COLORS.textMuted, paddingLeft: 9 }}>+{evs.length - 3}</span>}
+                {evs.length > 4 && <span style={{ fontSize: 9, color: COLORS.textMuted, paddingLeft: 9 }}>+{evs.length - 4}</span>}
               </div>
             </div>
           );
