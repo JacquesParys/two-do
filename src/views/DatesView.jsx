@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors, useDroppable, useDraggable, closestCenter } from "@dnd-kit/core";
 import { COLORS, TYPE, SPACE, RADIUS, withAlpha, fxSeed } from "../theme";
-import { LaneBadge, SleepsChip, Card, EmptyState, IconButton, timeProximity, LinkedListChips } from "../components/primitives.jsx";
+import { LaneBadge, SleepsChip, Card, EmptyState, IconButton, Chevron, timeProximity, LinkedListChips } from "../components/primitives.jsx";
 import { getBootstrap, listCalendar, updateItem, getListSummaries } from "../lib/data.js";
 import { laneLabel as resolveLaneLabel, laneColor as resolveLaneColor, SLOTS } from "../lib/lanes.js";
 import { itemsOnDay } from "../lib/recurrence.js";
@@ -41,11 +41,6 @@ const sleepsUntil = (d) => { const t = new Date(); t.setHours(0, 0, 0, 0); const
 const eventDate = (e) => new Date(e.start_at || e.due_at);
 const monthId = (d) => `m-${d.getFullYear()}-${d.getMonth()}`;
 
-const Chevron = ({ dir, color = COLORS.textPrimary }) => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    {dir === "left" ? <polyline points="15 6 9 12 15 18" /> : <polyline points="9 6 15 12 9 18" />}
-  </svg>
-);
 
 const dowStyle = { textAlign: "center", fontSize: 9, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: COLORS.textMuted, textTransform: "uppercase", padding: "4px 0" };
 

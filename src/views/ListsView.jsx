@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { COLORS, TYPE, SPACE, RADIUS, withAlpha } from "../theme";
-import { LaneBadge, Card, Chip, SectionLabel, EmptyState } from "../components/primitives.jsx";
+import { LaneBadge, Card, Chip, SectionLabel, EmptyState, IconButton, Chevron } from "../components/primitives.jsx";
 import { getBootstrap, listLists, listListItems, listStores, updateItem, deleteItem, createList, createStore, subscribe } from "../lib/data.js";
 import { laneLabel as resolveLaneLabel, laneColor as resolveLaneColor } from "../lib/lanes.js";
 
@@ -30,6 +30,8 @@ function InlineAdd({ placeholder, label, onAdd }) {
 }
 
 const fadeX = { WebkitMaskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)", maskImage: "linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%)" };
+// Feather both ends — the list-title quick-links sit between two nav arrows.
+const fadeXBoth = { WebkitMaskImage: "linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)", maskImage: "linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)" };
 
 const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataVersion = 0 }) => {
   const [ctx, setCtx] = useState(null);
@@ -41,6 +43,7 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [pending, setPending] = useState({}); // id -> target checked, shown before the row re-buckets
+  const titleRefs = useRef({}); // list id -> its quick-link node, for scroll-into-view
 
   async function load() {
     try {
@@ -56,6 +59,18 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
   useEffect(() => { load(); const u = subscribe("item", load); return () => u(); }, []);
   // Reload in place when something elsewhere filed/edited (no remount, no flash).
   useEffect(() => { if (dataVersion) load(); }, [dataVersion]);
+
+  // Switch the active list (clamped); reset the store filter. Used by both the
+  // serif title quick-links and the prev/next arrows.
+  const selectList = (i) => {
+    const n = Math.max(0, Math.min(lists.length - 1, i));
+    setActiveList(n);
+    setStoreFilter("All");
+  };
+  // Keep the active title centered when it changes (arrow step or tap).
+  useEffect(() => {
+    titleRefs.current[lists[activeList]?.id]?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [activeList, lists]);
 
   // Check the box first (in place), then let it move to/from Done — feels complete.
   async function toggle(it) {
@@ -122,14 +137,22 @@ const ListsView = ({ isDesktop, onOpenItem, onChanged, laneFilter = "all", dataV
 
   return (
     <div style={{ padding: "0 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-        <div className="no-sb" style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", flex: 1, ...fadeX }}>
-        {lists.map((l, i) => (
-          <Chip key={l.id} active={i === activeList} variant="soft" onClick={() => { setActiveList(i); setStoreFilter("All"); }}>
-            {l.emoji} {l.name}
-          </Chip>
-        ))}
+      {/* List titles as serif quick-links between prev/next arrows (like the Dates
+          header). The active list reads brighter; the rest are dimmed. */}
+      <div style={{ display: "flex", alignItems: "center", gap: SPACE[2], marginBottom: 12 }}>
+        <IconButton onClick={() => selectList(activeList - 1)} label="Previous list" size={32} icon={<Chevron dir="left" />} style={{ opacity: activeList <= 0 ? 0.3 : 1, pointerEvents: activeList <= 0 ? "none" : "auto" }} />
+        <div className="no-sb" style={{ display: "flex", alignItems: "center", gap: 18, overflowX: "auto", flex: 1, ...fadeXBoth }}>
+          {lists.map((l, i) => {
+            const on = i === activeList;
+            return (
+              <button key={l.id} ref={(el) => (titleRefs.current[l.id] = el)} onClick={() => selectList(i)} className="focusable"
+                style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", padding: "2px 0", whiteSpace: "nowrap", fontFamily: "'Fraunces', serif", fontSize: 18, color: on ? COLORS.textPrimary : COLORS.textMuted, opacity: on ? 1 : 0.75 }}>
+                {l.emoji} {l.name}
+              </button>
+            );
+          })}
         </div>
+        <IconButton onClick={() => selectList(activeList + 1)} label="Next list" size={32} icon={<Chevron dir="right" />} style={{ opacity: activeList >= lists.length - 1 ? 0.3 : 1, pointerEvents: activeList >= lists.length - 1 ? "none" : "auto" }} />
         <InlineAdd placeholder="New list" label="List" onAdd={addList} />
       </div>
 
