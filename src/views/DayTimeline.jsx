@@ -265,7 +265,7 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
   };
 
   return (
-    <div ref={scrollRef} className="no-sb" style={{ position: "relative", overflowY: "auto", flex: 1, minHeight: 0 }}>
+    <div ref={scrollRef} className="no-sb" style={{ position: "relative", overflowY: "auto", flex: 1, minHeight: 0, paddingRight: SPACE[4], paddingBottom: SPACE[5] }}>
       <div style={{ position: "relative", height: 24 * HOUR_PX }}>
         {/* Hour grid */}
         {Array.from({ length: 24 }, (_, h) => (

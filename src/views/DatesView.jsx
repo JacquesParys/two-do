@@ -366,7 +366,9 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
   return (
     <div style={{ padding: "0 8px" }}>
       {header}
-      <div className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto", overflowX: "hidden", padding: "0 6px" }}>{body}</div>
+      {/* Padding gives the exciting glow (bleeds ~20-30px past a card) room before
+          the scroll container clips at its edges. */}
+      <div className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto", overflowX: "hidden", padding: "12px 16px" }}>{body}</div>
     </div>
   );
 };
