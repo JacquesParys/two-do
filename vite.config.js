@@ -28,6 +28,22 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy vendors into their own chunks: smaller app chunk, and the
+        // browser keeps these cached when only our code changes (clears the
+        // >500 kB single-bundle warning too).
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("@supabase")) return "supabase";
+          if (id.includes("@dnd-kit")) return "dndkit";
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
+          return "vendor";
+        }
+      }
+    }
+  },
   test: {
     environment: "node",
     // Force MOCK mode in unit tests even when .env.local has real Supabase creds.
