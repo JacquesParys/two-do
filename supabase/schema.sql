@@ -142,6 +142,7 @@ create table item (
 
   -- recurrence (embedded; tasks/events). Occurrences are expanded on read, never stored.
   recur_freq    text,                               -- 'daily' | 'weekly' | 'monthly' | null
+  recur_interval int,                               -- every N periods (default 1); weekly×2 = bi-weekly, custom = any N
   recur_until   timestamptz,                        -- optional end of the series
   recur_except  jsonb,                              -- array of 'YYYY-MM-DD' keys to skip ("this occurrence only")
 

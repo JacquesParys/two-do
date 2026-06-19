@@ -19,10 +19,17 @@ export function occursOn(item, day) {
   if (d0 < b0) return false;
   if (item.recur_until && d0 > startOfDay(new Date(item.recur_until))) return false;
   if (Array.isArray(item.recur_except) && item.recur_except.includes(dateKey(d0))) return false;
+  // recur_interval (default 1) repeats every N periods: weekly×2 = bi-weekly, etc.
+  const interval = item.recur_interval > 0 ? item.recur_interval : 1;
+  const dayDiff = Math.round((d0 - b0) / 86400000);
   switch (item.recur_freq) {
-    case "daily": return true;
-    case "weekly": return d0.getDay() === b0.getDay();
-    case "monthly": return d0.getDate() === b0.getDate();
+    case "daily": return dayDiff % interval === 0;
+    case "weekly": return d0.getDay() === b0.getDay() && Math.round(dayDiff / 7) % interval === 0;
+    case "monthly": {
+      if (d0.getDate() !== b0.getDate()) return false;
+      const months = (d0.getFullYear() - b0.getFullYear()) * 12 + (d0.getMonth() - b0.getMonth());
+      return months % interval === 0;
+    }
     default: return false;
   }
 }

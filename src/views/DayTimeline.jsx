@@ -30,7 +30,7 @@ function toBlocks(items) {
     if (!anchor) continue;
     const startMin = minutesOfDay(anchor);
     let durMin;
-    if (it.start_at && it.end_at) durMin = Math.max(MIN_DUR, minutesOfDay(it.end_at) - startMin);
+    if (it.end_at) durMin = Math.max(MIN_DUR, minutesOfDay(it.end_at) - startMin);
     else if (it.start_at) durMin = DEFAULT_DUR;
     else durMin = MIN_DUR;
     out.push({ it, startMin, durMin, endMin: startMin + durMin });

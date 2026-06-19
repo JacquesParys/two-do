@@ -438,7 +438,7 @@ const ITEM_COLUMNS = new Set([
   "due_at", "location_context", "column_id", "ord", "state", "persistent_until_done", "countdown",
   "start_at", "end_at", "list_id", "qty", "price_estimate", "store", "checked", "checked_at",
   "amount", "paid_by", "cost_attribution", "category", "spent_at", "from_shopping_item_id",
-  "recur_freq", "recur_until", "recur_except",
+  "recur_freq", "recur_until", "recur_except", "recur_interval",
 ]);
 function cleanItem(o) {
   const out = {};

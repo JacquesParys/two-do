@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { COLORS } from "./theme";
-import { laneLabel, SLOTS } from "./lib/lanes.js";
+import { COLORS, withAlpha } from "./theme";
+import { laneLabel, laneColor as resolveLaneColor, SLOTS } from "./lib/lanes.js";
 import { createItem, updateItem, deleteItem, listColumns, listStores, createStore, listLists, listItemsForList } from "./lib/data.js";
 
 const EMOJI = ["💕", "🎉", "🎸", "✈️", "🎂", "🍷", "🏖️", "🎬", "⚽", "🎄", "🎁", "🌟", "🍕", "🐱", "🏡", "💸"];
@@ -17,15 +17,15 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const sameDay = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 // Coral calendar glyph.
-const CalIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={COLORS.accent} strokeWidth="2" strokeLinecap="round">
+const CalIcon = ({ color = COLORS.accent }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
     <rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
   </svg>
 );
 
-// Themed (green/coral) date picker — replaces the native input so the popup
-// matches the app instead of the browser's white calendar.
-function DatePicker({ value, onChange }) {
+// Themed date picker — replaces the native input so the popup matches the app
+// instead of the browser's white calendar. Tints to the item's lane `accent`.
+function DatePicker({ value, onChange, accent = COLORS.accent }) {
   const [open, setOpen] = useState(false);
   const selected = value ? new Date(value) : null;
   const [view, setView] = useState(() => selected || new Date());
@@ -40,7 +40,7 @@ function DatePicker({ value, onChange }) {
         <span style={{ color: selected ? COLORS.textPrimary : COLORS.textMuted }}>
           {selected ? `${selected.getDate()} ${MONTHS[selected.getMonth()].slice(0, 3)} ${selected.getFullYear()}` : "Pick a date"}
         </span>
-        <CalIcon />
+        <CalIcon color={accent} />
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 5, width: 280, background: COLORS.surface, border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 14, padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
@@ -60,18 +60,18 @@ function DatePicker({ value, onChange }) {
               return (
                 <button key={i} onClick={() => { onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).toISOString()); setOpen(false); }}
                   style={{ height: 32, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans', sans-serif",
-                    background: isSel ? COLORS.accent : "transparent",
+                    background: isSel ? accent : "transparent",
                     color: isSel ? COLORS.bg : (inMonth ? COLORS.textPrimary : COLORS.textMuted),
                     fontWeight: isTd || isSel ? 600 : 400,
-                    outline: isTd && !isSel ? `1px solid ${COLORS.accent}` : "none" }}>
+                    outline: isTd && !isSel ? `1px solid ${accent}` : "none" }}>
                   {day.getDate()}
                 </button>
               );
             })}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-            <button onClick={() => { onChange(null); setOpen(false); }} style={pickerLink}>Clear</button>
-            <button onClick={() => { onChange(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12).toISOString()); setView(today); setOpen(false); }} style={pickerLink}>Today</button>
+            <button onClick={() => { onChange(null); setOpen(false); }} style={{ ...pickerLink, color: accent }}>Clear</button>
+            <button onClick={() => { onChange(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12).toISOString()); setView(today); setOpen(false); }} style={{ ...pickerLink, color: accent }}>Today</button>
           </div>
         </div>
       )}
@@ -118,6 +118,24 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
   const exciting = form.kind === "exciting";
   const dateField = form.type === "event" ? "start_at" : "due_at";
   const hasDate = !!form[dateField];
+  // The whole editor tints to the chosen lane's colour (Me=blue, You=purple, Us=coral).
+  const accent = form.lane ? resolveLaneColor(form.lane, ctx?.people, COLORS) : COLORS.accent;
+  const typeLabel = form.type === "shopping" ? "list" : form.type;
+
+  // Repeat presets ride on recur_freq + recur_interval (bi-weekly = weekly ×2).
+  const recurInterval = form.recur_interval > 0 ? form.recur_interval : 1;
+  const recurPreset = !form.recur_freq ? ""
+    : form.recur_freq === "daily" && recurInterval === 1 ? "daily"
+    : form.recur_freq === "weekly" && recurInterval === 1 ? "weekly"
+    : form.recur_freq === "weekly" && recurInterval === 2 ? "biweekly"
+    : form.recur_freq === "monthly" && recurInterval === 1 ? "monthly"
+    : "custom";
+  function setRecurPreset(v) {
+    const map = { "": [null, null], daily: ["daily", 1], weekly: ["weekly", 1], biweekly: ["weekly", 2], monthly: ["monthly", 1] };
+    if (v in map) { const [f, i] = map[v]; setForm((s) => ({ ...s, recur_freq: f, recur_interval: i })); return; }
+    // Custom: keep the current unit, pick a non-preset interval to start.
+    setForm((s) => ({ ...s, recur_freq: s.recur_freq || "weekly", recur_interval: recurInterval > 2 ? recurInterval : 3 }));
+  }
 
   function close() { setShown(false); setTimeout(onClose, 200); }
 
@@ -141,27 +159,28 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, maxHeight: "90%", display: "flex", flexDirection: "column", background: COLORS.bg, border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 20, boxShadow: "0 20px 60px rgba(0,0,0,0.55)", transform: shown ? "translateY(0) scale(1)" : "translateY(12px) scale(0.98)", transition: "transform 0.2s ease" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: `1px solid ${COLORS.surfaceLight}` }}>
           <button onClick={close} style={iconBtn}>Close</button>
-          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textMuted }}>{isNew ? "New" : "Edit"} {form.type}</span>
-          <button onClick={save} style={{ ...iconBtn, color: COLORS.accent, fontWeight: 600 }}>Save</button>
+          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textMuted }}>{isNew ? "New" : "Edit"} {typeLabel}</span>
+          <button onClick={save} style={{ ...iconBtn, color: accent, fontWeight: 600 }}>Save</button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "14px 16px 22px" }}>
           <input value={form.title || ""} onChange={(e) => set("title", e.target.value)} placeholder="What is it?" style={{ ...input, fontSize: 16, fontWeight: 600 }} />
 
           <Label>Lane</Label>
-          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} />
+          <Segmented options={laneOpts.map((o) => ({ value: o.slot, label: o.label }))} value={form.lane} onChange={(v) => set("lane", v)} accent={accent} />
 
           <Label>Type</Label>
           <Segmented
-            options={[{ value: "task", label: "Task" }, { value: "event", label: "Event" }, { value: "shopping", label: "Shopping" }, { value: "expense", label: "Expense" }]}
+            options={[{ value: "task", label: "Task" }, { value: "event", label: "Event" }, { value: "shopping", label: "List" }, { value: "expense", label: "Expense" }]}
             value={form.type}
             onChange={(v) => set("type", v)}
+            accent={accent}
           />
 
           {form.type === "shopping" && (
             <>
               <Label>Shop</Label>
-              <StorePicker stores={stores} value={form.store ?? null} onChange={(v) => set("store", v)} onAdd={async (name) => { const st = await createStore({ name, space_id: ctx?.space?.id }); setStores(await listStores()); set("store", st.name); }} />
+              <StorePicker stores={stores} value={form.store ?? null} accent={accent} onChange={(v) => set("store", v)} onAdd={async (name) => { const st = await createStore({ name, space_id: ctx?.space?.id }); setStores(await listStores()); set("store", st.name); }} />
               <Label>Quantity</Label>
               <input value={form.qty || ""} onChange={(e) => set("qty", e.target.value)} placeholder="e.g. x2, 500g" style={input} />
             </>
@@ -169,32 +188,45 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
 
           {(form.type === "task" || form.type === "event") && (
             <>
-              <Label>{form.type === "event" ? "When" : "Due"}</Label>
-              <DatePicker value={form[dateField]} onChange={(v) => set(dateField, v)} />
-              {hasDate && (
-                <>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ flex: "1 1 110px", minWidth: 0 }}>
-                      <Label>{form.type === "event" ? "Start time" : "Time"}</Label>
+              {/* When + Start + End share one row */}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ flex: "2 1 150px", minWidth: 0 }}>
+                  <Label>{form.type === "event" ? "When" : "Due"}</Label>
+                  <DatePicker value={form[dateField]} onChange={(v) => set(dateField, v)} accent={accent} />
+                </div>
+                {hasDate && (
+                  <>
+                    <div style={{ flex: "1 1 90px", minWidth: 0 }}>
+                      <Label>Start</Label>
                       <input type="time" value={timeOf(form[dateField])} onChange={(e) => set(dateField, withTime(form[dateField], e.target.value))} style={timeInput} />
                     </div>
-                    {form.type === "event" && (
-                      <div style={{ flex: "1 1 110px", minWidth: 0 }}>
-                        <Label>End time</Label>
-                        <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form.start_at, e.target.value))} style={timeInput} />
-                      </div>
-                    )}
-                  </div>
+                    <div style={{ flex: "1 1 90px", minWidth: 0 }}>
+                      <Label>End</Label>
+                      <input type="time" value={timeOf(form.end_at)} onChange={(e) => set("end_at", withTime(form.end_at || form[dateField], e.target.value))} style={timeInput} />
+                    </div>
+                  </>
+                )}
+              </div>
+              {hasDate && (
+                <>
                   <Label>Repeats</Label>
                   <Segmented
-                    options={[{ value: "", label: "None" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }]}
-                    value={form.recur_freq ?? ""}
-                    onChange={(v) => set("recur_freq", v || null)}
+                    options={[{ value: "", label: "None" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "biweekly", label: "Bi-weekly" }, { value: "monthly", label: "Monthly" }, { value: "custom", label: "Custom" }]}
+                    value={recurPreset}
+                    onChange={setRecurPreset}
+                    accent={accent}
                   />
+                  {recurPreset === "custom" && (
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                      <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: COLORS.textSecondary }}>Every</span>
+                      <input type="number" min="1" value={recurInterval} onChange={(e) => set("recur_interval", Math.max(1, Number(e.target.value) || 1))} style={{ ...timeInput, width: 64, textAlign: "center" }} />
+                      <Segmented options={[{ value: "daily", label: "Days" }, { value: "weekly", label: "Weeks" }, { value: "monthly", label: "Months" }]} value={form.recur_freq} onChange={(v) => set("recur_freq", v)} accent={accent} />
+                    </div>
+                  )}
                   {form.recur_freq && (
                     <>
                       <Label>Until (optional)</Label>
-                      <DatePicker value={form.recur_until} onChange={(v) => set("recur_until", v)} />
+                      <DatePicker value={form.recur_until} onChange={(v) => set("recur_until", v)} accent={accent} />
                     </>
                   )}
                 </>
@@ -205,7 +237,7 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           {form.type === "task" && columns.length > 0 && (
             <>
               <Label>Column</Label>
-              <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} />
+              <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} accent={accent} />
             </>
           )}
 
@@ -218,7 +250,7 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {lists.map((l) => {
                     const on = (form.linked_list_ids || []).includes(l.id);
-                    return <button key={l.id} onClick={() => toggleListLink(l.id)} style={chip(on)}>{l.emoji ? l.emoji + " " : ""}{l.name}</button>;
+                    return <button key={l.id} onClick={() => toggleListLink(l.id)} style={chip(on, accent)}>{l.emoji ? l.emoji + " " : ""}{l.name}</button>;
                   })}
                 </div>
               )}
@@ -232,14 +264,14 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
                         <div style={{ fontFamily: "'Fraunces', serif", fontStyle: "italic", fontSize: 13, color: COLORS.textMuted, padding: "4px 2px" }}>This list is empty.</div>
                       ) : g.items.map((it) => (
                         <button key={it.id} onClick={() => toggleLinked(it)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, background: COLORS.surface, border: "none", cursor: "pointer", textAlign: "left" }}>
-                          <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, border: it.checked ? "none" : `2px solid ${COLORS.textMuted}`, background: it.checked ? COLORS.accent : "transparent", color: COLORS.bg }}>{it.checked ? "✓" : ""}</span>
+                          <span style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, border: it.checked ? "none" : `2px solid ${COLORS.textMuted}`, background: it.checked ? accent : "transparent", color: COLORS.bg }}>{it.checked ? "✓" : ""}</span>
                           <span style={{ flex: 1, fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: it.checked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: it.checked ? "line-through" : "none" }}>
                             {it.title}{it.qty && <span style={{ color: COLORS.textMuted, marginLeft: 6, fontSize: 12 }}>{it.qty}</span>}
                           </span>
                         </button>
                       ))}
                     </div>
-                    <LinkedAdd listId={g.id} lane={form.lane} spaceId={ctx?.space?.id} createdBy={ctx?.people?.[viewer]?.id ?? null} onAdded={loadLinked} />
+                    <LinkedAdd listId={g.id} lane={form.lane} accent={accent} spaceId={ctx?.space?.id} createdBy={ctx?.people?.[viewer]?.id ?? null} onAdded={loadLinked} />
                   </div>
                 );
               })}
@@ -256,28 +288,28 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           <Label>Notes</Label>
           <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="Anything else…" rows={3} style={{ ...input, resize: "vertical" }} />
 
-          <Row><Toggle label="Exciting" on={exciting} onClick={() => set("kind", exciting ? "routine" : "exciting")} /></Row>
+          <Row><Toggle label="Exciting" on={exciting} onClick={() => set("kind", exciting ? "routine" : "exciting")} accent={accent} /></Row>
           {exciting && (
             <>
               <Label>Emoji</Label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {EMOJI.map((em) => (
-                  <button key={em} onClick={() => set("emoji", em)} style={{ width: 40, height: 40, borderRadius: 10, fontSize: 18, cursor: "pointer", border: form.emoji === em ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}`, background: form.emoji === em ? COLORS.accentMuted : COLORS.surface }}>{em}</button>
+                  <button key={em} onClick={() => set("emoji", em)} style={{ width: 40, height: 40, borderRadius: 10, fontSize: 18, cursor: "pointer", border: form.emoji === em ? `2px solid ${accent}` : `1px solid ${COLORS.surfaceLight}`, background: form.emoji === em ? withAlpha(accent, 0.15) : COLORS.surface }}>{em}</button>
                 ))}
               </div>
             </>
           )}
 
           {hasDate && (form.type === "task" || form.type === "event") && (
-            <Row><Toggle label="Show countdown (sleeps)" on={!!form.countdown} onClick={() => set("countdown", !form.countdown)} /></Row>
+            <Row><Toggle label="Show countdown (sleeps)" on={!!form.countdown} onClick={() => set("countdown", !form.countdown)} accent={accent} /></Row>
           )}
           {form.type === "task" && (
-            <Row><Toggle label="Keep reminding me" on={!!form.persistent_until_done} onClick={() => set("persistent_until_done", !form.persistent_until_done)} /></Row>
+            <Row><Toggle label="Keep reminding me" on={!!form.persistent_until_done} onClick={() => set("persistent_until_done", !form.persistent_until_done)} accent={accent} /></Row>
           )}
 
           <Label>Color</Label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <button onClick={() => set("color", null)} className="focusable" title="Auto (lane color)" style={{ height: 22, padding: "0 10px", borderRadius: 11, background: COLORS.surface, color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 500, cursor: "pointer", border: !form.color ? `2px solid ${COLORS.accent}` : `1px solid ${COLORS.surfaceLight}` }}>Auto</button>
+            <button onClick={() => set("color", null)} className="focusable" title="Auto (lane color)" style={{ height: 22, padding: "0 10px", borderRadius: 11, background: COLORS.surface, color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 500, cursor: "pointer", border: !form.color ? `2px solid ${accent}` : `1px solid ${COLORS.surfaceLight}` }}>Auto</button>
             {SWATCHES.map((c) => (
               <button key={c} onClick={() => set("color", c)} className="focusable" title={c} style={{ width: 22, height: 22, borderRadius: 11, padding: 0, background: c, border: "none", cursor: "pointer", outline: form.color === c ? `2px solid ${COLORS.textPrimary}` : "none", outlineOffset: 2 }} />
             ))}
@@ -290,7 +322,7 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
   );
 }
 
-function LinkedAdd({ listId, lane, spaceId, createdBy, onAdded }) {
+function LinkedAdd({ listId, lane, spaceId, createdBy, onAdded, accent = COLORS.accent }) {
   const [val, setVal] = useState("");
   const submit = async () => {
     const t = val.trim();
@@ -302,7 +334,7 @@ function LinkedAdd({ listId, lane, spaceId, createdBy, onAdded }) {
   return (
     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
       <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Add an item…" style={{ ...input, marginBottom: 0, flex: 1, padding: "8px 12px" }} />
-      <button onClick={submit} className="focusable" style={{ ...iconBtn, color: COLORS.accent, fontWeight: 600 }}>Add</button>
+      <button onClick={submit} className="focusable" style={{ ...iconBtn, color: accent, fontWeight: 600 }}>Add</button>
     </div>
   );
 }
@@ -311,19 +343,19 @@ function Label({ children }) {
   return <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textSecondary, margin: "12px 0 6px" }}>{children}</div>;
 }
 function Row({ children }) { return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>{children}</div>; }
-function Segmented({ options, value, onChange }) {
+function Segmented({ options, value, onChange, accent = COLORS.accent }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {options.map((o) => (
-        <button key={o.value} onClick={() => onChange(o.value)} style={{ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: value === o.value ? COLORS.accent : COLORS.surface, color: value === o.value ? COLORS.bg : COLORS.textSecondary }}>{o.label}</button>
+        <button key={o.value} onClick={() => onChange(o.value)} style={{ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: value === o.value ? accent : COLORS.surface, color: value === o.value ? COLORS.bg : COLORS.textSecondary }}>{o.label}</button>
       ))}
     </div>
   );
 }
-function Toggle({ label, on, onClick }) {
+function Toggle({ label, on, onClick, accent = COLORS.accent }) {
   return (
     <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, padding: "12px 14px", borderRadius: 12, border: "none", cursor: "pointer", background: COLORS.surface, color: COLORS.textPrimary, fontFamily: "'DM Sans', sans-serif", fontSize: 14, textAlign: "left" }}>
-      <span style={{ width: 38, height: 22, borderRadius: 11, background: on ? COLORS.accent : COLORS.surfaceLight, position: "relative", flexShrink: 0, transition: "background 0.15s ease" }}>
+      <span style={{ width: 38, height: 22, borderRadius: 11, background: on ? accent : COLORS.surfaceLight, position: "relative", flexShrink: 0, transition: "background 0.15s ease" }}>
         <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: 9, background: COLORS.bg, transition: "left 0.15s ease" }} />
       </span>
       {label}
@@ -331,7 +363,7 @@ function Toggle({ label, on, onClick }) {
   );
 }
 
-function StorePicker({ stores, value, onChange, onAdd }) {
+function StorePicker({ stores, value, onChange, onAdd, accent = COLORS.accent }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const submit = async () => { const n = name.trim(); if (!n) return; await onAdd(n); setName(""); setAdding(false); };
@@ -339,20 +371,20 @@ function StorePicker({ stores, value, onChange, onAdd }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {opts.map((o) => (
-        <button key={o.value ?? "any"} onClick={() => onChange(o.value)} style={chip(value === o.value)}>{o.label}</button>
+        <button key={o.value ?? "any"} onClick={() => onChange(o.value)} style={chip(value === o.value, accent)}>{o.label}</button>
       ))}
       {adding ? (
         <span style={{ display: "flex", gap: 4 }}>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Shop name" style={{ ...input, width: 130, marginBottom: 0, padding: "8px 10px" }} />
-          <button onClick={submit} style={chip(true)}>Add</button>
+          <button onClick={submit} style={chip(true, accent)}>Add</button>
         </span>
       ) : (
-        <button onClick={() => setAdding(true)} style={{ ...chip(false), color: COLORS.accent, border: `1px dashed ${COLORS.accent}` }}>+ New shop</button>
+        <button onClick={() => setAdding(true)} style={{ ...chip(false), color: accent, border: `1px dashed ${accent}` }}>+ New shop</button>
       )}
     </div>
   );
 }
-const chip = (on) => ({ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: on ? COLORS.accent : COLORS.surface, color: on ? COLORS.bg : COLORS.textSecondary });
+const chip = (on, accent = COLORS.accent) => ({ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: on ? accent : COLORS.surface, color: on ? COLORS.bg : COLORS.textSecondary });
 
 const input = { width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 12, border: `1px solid ${COLORS.surfaceLight}`, background: COLORS.surface, fontFamily: "'DM Sans', sans-serif", fontSize: 16, color: COLORS.textPrimary, outline: "none", caretColor: COLORS.accent, marginBottom: 4 };
 // Time fields size to their content (native time widget) so they never overflow the frame.
