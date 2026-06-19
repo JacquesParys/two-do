@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle, excitingAnim } from "../theme";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle } from "../theme";
 import { LaneBadge, LaneFill, LinkedListChips, timeProximity, ExcitingFx } from "../components/primitives.jsx";
 import { laneColor as resolveLaneColor, laneLabel as resolveLaneLabel } from "../lib/lanes.js";
 
@@ -324,8 +324,8 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                   }}
                 >
                   <LaneFill color={nodeCol} proximity={timeProximity(b.it)} completion={completion} />
-                  {exciting && <ExcitingFx variant={variant} />}
-                  <div className="motion" style={{ position: "relative", animation: exciting ? excitingAnim(variant) : undefined }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
+                  {exciting && <ExcitingFx variant={variant} color={nodeCol} />}
+                  <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative" }}>{entryLine(b.it, exciting, time, laneCol, nodeCol)}</div>
                   {hPx >= 48 && linked.length > 0 && (
                     <div style={{ position: "relative" }}><LinkedListChips lists={linked} style={{ marginTop: 4 }} /></div>
                   )}

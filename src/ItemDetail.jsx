@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
-import { COLORS, withAlpha, glow, EXCITING_FX, excitingAnim } from "./theme";
+import { COLORS, withAlpha, EXCITING_FX, excitingStyle, excitingAnim } from "./theme";
 import { laneLabel, laneColor as resolveLaneColor, SLOTS } from "./lib/lanes.js";
 import { ExcitingFx } from "./components/primitives.jsx";
 import { createItem, updateItem, deleteItem, listColumns, listStores, createStore, listLists, listItemsForList } from "./lib/data.js";
@@ -44,10 +44,10 @@ function MiniToggle({ label, on, onClick, accent = COLORS.accent }) {
 // A tiny live preview of an exciting effect, for the effect dropdown rows.
 function FxDot({ variant, color }) {
   const base = { width: 16, height: 16, borderRadius: 6, flexShrink: 0, position: "relative", overflow: "hidden", background: withAlpha(color, 0.25), border: `1px solid ${withAlpha(color, 0.6)}` };
-  if (variant === "pulse") return <span className="motion" style={{ ...base, animation: "twodoPulse 2.4s ease-in-out infinite", "--fxLo": withAlpha(color, 0.2), "--fxHi": withAlpha(color, 0.7) }} />;
   if (variant === "float") return <span className="motion" style={{ ...base, animation: excitingAnim("float") }} />;
-  if (variant === "sparkle") return <span className="motion" style={base}><ExcitingFx variant="sparkle" /></span>;
-  return <span style={{ ...base, boxShadow: glow(color) }} />;
+  if (variant === "sparkle") return <span className="motion" style={base}><ExcitingFx variant="sparkle" color={color} /></span>;
+  const ex = excitingStyle(variant, color); // glow / pulse → breathing box-shadow
+  return <span className="motion" style={{ ...base, boxShadow: ex.boxShadow, animation: ex.animation, "--fxLo": ex["--fxLo"], "--fxHi": ex["--fxHi"] }} />;
 }
 
 // "Kind of exciting" dropdown — maps to the visual-effect variant.

@@ -69,10 +69,16 @@ export const EXCITING_FX = ["glow", "pulse", "float", "sparkle"];
 // via CSS vars — its own shadow isn't clipped by the card's overflow:hidden.
 export function excitingStyle(variant, color) {
   const s = { boxShadow: glow(color), border: `1px solid ${withAlpha(color, 0.45)}` };
+  // Both glow and pulse breathe the element's OWN box-shadow via CSS vars (not
+  // clipped by overflow:hidden). Glow ebbs slowly + bright; pulse is quicker + stronger.
   if (variant === "pulse") {
-    s.animation = "twodoPulse 2.4s ease-in-out infinite";
-    s["--fxLo"] = withAlpha(color, 0.16);
-    s["--fxHi"] = withAlpha(color, 0.5);
+    s.animation = "twodoPulse 1.8s ease-in-out infinite";
+    s["--fxLo"] = withAlpha(color, 0.18);
+    s["--fxHi"] = withAlpha(color, 0.9);
+  } else if (variant === "glow" || variant == null) {
+    s.animation = "twodoPulse 5s ease-in-out infinite";
+    s["--fxLo"] = withAlpha(color, 0.3);
+    s["--fxHi"] = withAlpha(color, 0.78);
   }
   return s;
 }
@@ -112,10 +118,23 @@ export function ensureFonts() {
     s.textContent = `
       @keyframes twodoFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
       @keyframes twodoPulse {
-        0%,100% { box-shadow: 0 0 0 1px var(--fxLo, transparent), 0 4px 12px var(--fxLo, transparent); }
-        50%     { box-shadow: 0 0 0 1px var(--fxHi, transparent), 0 6px 22px var(--fxHi, transparent); }
+        0%,100% { box-shadow: 0 0 0 1px var(--fxLo, transparent), 0 4px 14px var(--fxLo, transparent); }
+        50%     { box-shadow: 0 0 0 1.5px var(--fxHi, transparent), 0 8px 30px var(--fxHi, transparent); }
       }
-      @keyframes twodoSparkle { 0% { transform: translateX(-130%) skewX(-12deg); } 100% { transform: translateX(130%) skewX(-12deg); } }
+      /* Sparkle: a soft item-coloured sheen that fades in, sweeps, fades out, then rests. */
+      @keyframes twodoSparkle {
+        0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+        10%  { opacity: 1; }
+        45%  { opacity: 1; }
+        55%  { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+        100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+      }
+      /* Float bobs each line/chip with a staggered offset for an organic drift. */
+      .fx-float > * { animation: twodoFloat 3.2s ease-in-out infinite; }
+      .fx-float > *:nth-child(2) { animation-delay: 0.2s; }
+      .fx-float > *:nth-child(3) { animation-delay: 0.4s; }
+      .fx-float > *:nth-child(4) { animation-delay: 0.6s; }
+      .fx-float > *:nth-child(5) { animation-delay: 0.8s; }
 
       /* No stray text selection on tap/drag; inputs stay selectable. */
       #root { -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -137,6 +156,7 @@ export function ensureFonts() {
         .twodo-fab { animation: none !important; }
         .motion, .pressable { transition: none !important; }
         .motion { animation: none !important; }
+        .fx-float > * { animation: none !important; }
       }
     `;
     document.head.appendChild(s);

@@ -1,15 +1,15 @@
-import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle, excitingAnim } from "../theme";
+import { COLORS, TYPE, SPACE, RADIUS, SHADOW, withAlpha, glow, excitingStyle } from "../theme";
 
 // Animated exciting-effect overlay layers, rendered inside a card's rounded,
-// overflow-hidden surface. "sparkle" sweeps a sheen; pulse (element box-shadow)
-// and float (content transform) are handled by the host element, not here.
-export const ExcitingFx = ({ variant }) => {
+// overflow-hidden surface. "sparkle" sweeps a soft item-coloured sheen; pulse/glow
+// (element box-shadow) and float (staggered content) are handled by the host.
+export const ExcitingFx = ({ variant, color = COLORS.accent }) => {
   if (variant !== "sparkle") return null;
   return (
     <span aria-hidden className="motion" style={{
-      position: "absolute", top: 0, bottom: 0, left: 0, width: "55%",
-      background: `linear-gradient(100deg, transparent, ${withAlpha("#FFFFFF", 0.16)}, transparent)`,
-      pointerEvents: "none", animation: "twodoSparkle 2.8s ease-in-out infinite",
+      position: "absolute", top: 0, bottom: 0, left: "-10%", width: "60%",
+      background: `linear-gradient(105deg, transparent, ${withAlpha(color, 0.42)}, transparent)`,
+      filter: "blur(3px)", pointerEvents: "none", animation: "twodoSparkle 4.5s ease-in-out infinite",
     }} />
   );
 };
@@ -88,8 +88,8 @@ export const Card = ({ laneColor, stripeColor, exciting, variant, proximity, com
             }}
           />
         ))}
-      {exciting && <ExcitingFx variant={variant} />}
-      <div className="motion" style={{ position: "relative", animation: exciting ? excitingAnim(variant) : undefined }}>{children}</div>
+      {exciting && <ExcitingFx variant={variant} color={lane || COLORS.accentGlow} />}
+      <div className={`motion${exciting && variant === "float" ? " fx-float" : ""}`} style={{ position: "relative" }}>{children}</div>
     </div>
   );
 };
