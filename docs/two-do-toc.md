@@ -31,6 +31,9 @@ When docs disagree, resolve it like this:
 | `two-do-spec-v0_2.md` | v0.2 product spec — resolves the five questions (standalone calendar, voice day-one, simple finance, editable columns, push via PWA) | Current — product logic |
 | `two-do-ui-spec.md` | UI spec — palette, type, navigation, per-view layouts, interaction model, onboarding, copy | Current — design intent (note label drift, see above) |
 | `two-do-cowork-handoff.md` | Post-v0.2 UI/naming decisions + list of things not yet decided | Current — design deltas |
+| `two-do-nav-drawer.md` | Nav moved from the top chip bar to a right-edge drawer (push-left) opened by a top-right menu button; sign-out moved in too | **Built** 2026-06-19 |
+| `two-do-buttons-bottom.md` | Proposed — bottom rework: orbiting FAB pair (flat-coral `+` + liquid-glass Grown-Up), Grown-Up un-pinned to an on-demand sheet, bottom freed except lane chips | Proposed — not yet built |
+| `two-do-shell-audit.md` | Audit of both shell-chrome docs vs. the live shell + build notes for the nav drawer | Current — audit |
 | `two-do-shell.jsx` | Running React prototype of the app shell | **Current — visual/behavioural source of truth** |
 
 ---

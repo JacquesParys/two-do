@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { COLORS, ensureFonts } from "./theme";
+import { COLORS, MOTION, ensureFonts } from "./theme";
 import { getBootstrap } from "./lib/data.js";
 import { signOut } from "./lib/auth.js";
 import { isMockMode } from "./lib/supabase.js";
@@ -27,8 +27,6 @@ const PLACEHOLDERS = [
   "Two heads, one braincell. Go.",
   "Adulting is hard. I'll help.",
 ];
-
-ensureFonts();
 
 // Backward-compatible: pass `lane` (display string "Me"/"You"/"Us") for the
 // still-mock views, OR pass resolved `label` + `color` (from the lane resolver)
@@ -59,7 +57,11 @@ export default function TwoDoShell() {
   const [dataVersion, setDataVersion] = useState(0); // bump to force a reload
   const [editing, setEditing] = useState(null); // open ItemDetail when set
   const [laneFilter, setLaneFilter] = useState("all");
+  const [navOpen, setNavOpen] = useState(false); // right nav drawer
   const prevTab = useRef(0);
+  const menuBtnRef = useRef(null);
+  const drawerRef = useRef(null);
+  const wasNavOpen = useRef(false);
 
   const startNew = (type) => {
     const tmpl = { type, lane: "shared", kind: "routine" };
@@ -91,6 +93,22 @@ export default function TwoDoShell() {
     setActiveTab(i);
   };
 
+  // Drawer a11y: Esc closes; focus moves into the drawer on open and returns to
+  // the menu button on close. (Modal isn't reused here — see two-do-shell-audit.md §3.)
+  useEffect(() => {
+    if (navOpen) {
+      const onKey = (e) => e.key === "Escape" && setNavOpen(false);
+      document.addEventListener("keydown", onKey);
+      drawerRef.current?.querySelector("button")?.focus();
+      wasNavOpen.current = true;
+      return () => document.removeEventListener("keydown", onKey);
+    }
+    if (wasNavOpen.current) {
+      menuBtnRef.current?.focus();
+      wasNavOpen.current = false;
+    }
+  }, [navOpen]);
+
   const bump = () => setDataVersion((v) => v + 1);
   const views = [
     <DatesView key="dates" isDesktop={isDesktop} onOpenItem={setEditing} laneFilter={laneFilter} dataVersion={dataVersion} />,
@@ -116,7 +134,19 @@ export default function TwoDoShell() {
         borderRight: isDesktop ? `1px solid ${COLORS.surfaceLight}` : "none",
       }}
     >
-      {/* Top chip tabs */}
+      {/* Stage — header + content + lane filter + input bar. Pushes left when
+          the nav drawer opens (push, not pure overlay). See two-do-nav-drawer.md. */}
+      <div
+        className="motion"
+        style={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          transform: navOpen ? "translateX(-150px)" : "translateX(0)",
+          transition: `transform ${MOTION.slow}ms ${MOTION.ease}`,
+        }}
+      >
+      {/* Header — brand left, menu button right */}
       <div
         style={{
           display: "flex",
@@ -134,37 +164,30 @@ export default function TwoDoShell() {
             fontWeight: 500,
             color: COLORS.textPrimary,
             letterSpacing: -0.3,
-            flexShrink: 0,
+            flex: 1,
           }}
         >
           Two-Do
         </span>
-        <div style={{ display: "flex", gap: 6, flex: 1, justifyContent: "flex-end" }}>
-        {TABS.map((tab, i) => (
-          <button
-            key={tab}
-            onClick={() => handleTabSwitch(i)}
-            style={{
-              padding: "7px 12px",
-              borderRadius: 20,
-              border: i === activeTab ? "none" : `1px solid ${COLORS.surfaceLight}`,
-              fontSize: 13,
-              fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 500,
-              cursor: "pointer",
-              background: i === activeTab ? COLORS.accent : "transparent",
-              color: i === activeTab ? COLORS.bg : COLORS.textSecondary,
-              transition: "none",
-              letterSpacing: 0.2,
-            }}
-          >
-            {tab}
-          </button>
-        ))}
-        </div>
-        {!isMockMode && (
-          <button onClick={() => signOut()} title="Sign out" aria-label="Sign out" className="focusable" style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: 15, padding: "6px 2px", flexShrink: 0, lineHeight: 1 }}>⎋</button>
-        )}
+        <button
+          ref={menuBtnRef}
+          onClick={() => setNavOpen((o) => !o)}
+          aria-label="Open menu"
+          aria-expanded={navOpen}
+          className="focusable tap"
+          style={{
+            background: "none",
+            border: "none",
+            color: COLORS.textSecondary,
+            cursor: "pointer",
+            fontSize: 20,
+            padding: "6px 4px",
+            flexShrink: 0,
+            lineHeight: 1,
+          }}
+        >
+          ☰
+        </button>
       </div>
 
       {/* Content area. On desktop, single-column views stay readable (capped
@@ -187,27 +210,6 @@ export default function TwoDoShell() {
           {views[activeTab]}
         </div>
       </div>
-
-      {/* The Grown-Up review tray */}
-      {trayText != null && (
-        <ReviewTray
-          key={trayKey}
-          text={trayText}
-          ctx={ctx}
-          onClose={() => setTrayText(null)}
-          onFiled={() => setDataVersion((v) => v + 1)}
-        />
-      )}
-
-      {/* Item detail editor */}
-      {editing && (
-        <ItemDetail
-          item={editing}
-          ctx={ctx}
-          onClose={() => setEditing(null)}
-          onSaved={() => setDataVersion((v) => v + 1)}
-        />
-      )}
 
       {/* FAB - Add button */}
       <div className="twodo-fab" style={{ position: "absolute", right: 20, bottom: 82, zIndex: 5, animation: "twodoFloat 3.6s ease-in-out infinite" }}>
@@ -325,6 +327,117 @@ export default function TwoDoShell() {
           The Grown-Up
         </div>
       </div>
+      </div>
+      {/* end stage */}
+
+      {/* Scrim over the pushed stage while the drawer is open. Shared contract
+          with two-do-buttons-bottom.md: scrim z5 < drawer z6 < orbit z7 < sheets z8. */}
+      {navOpen && (
+        <div
+          onClick={() => setNavOpen(false)}
+          style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 5 }}
+        />
+      )}
+
+      {/* Right nav drawer */}
+      <nav
+        ref={drawerRef}
+        aria-label="Views"
+        className="motion"
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          height: "100%",
+          width: 230,
+          background: COLORS.bgRaised,
+          borderLeft: `1px solid ${COLORS.surfaceLight}`,
+          transform: navOpen ? "translateX(0)" : "translateX(100%)",
+          transition: `transform ${MOTION.slow}ms ${MOTION.ease}`,
+          zIndex: 6,
+          display: "flex",
+          flexDirection: "column",
+          padding: "18px 12px",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+            color: COLORS.textMuted,
+            padding: "0 8px 10px",
+          }}
+        >
+          Views
+        </div>
+        {TABS.map((tab, i) => (
+          <button
+            key={tab}
+            onClick={() => { handleTabSwitch(i); setNavOpen(false); }}
+            className="focusable"
+            style={{
+              textAlign: "left",
+              padding: "11px 14px",
+              marginBottom: 4,
+              borderRadius: 12,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 15,
+              fontWeight: 500,
+              background: i === activeTab ? COLORS.accent : "transparent",
+              color: i === activeTab ? COLORS.bg : COLORS.textSecondary,
+            }}
+          >
+            {tab}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        {!isMockMode && (
+          <button
+            onClick={() => signOut()}
+            className="focusable"
+            style={{
+              textAlign: "left",
+              padding: "11px 14px",
+              borderRadius: 12,
+              border: `1px solid ${COLORS.surfaceLight}`,
+              cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 14,
+              fontWeight: 500,
+              background: "transparent",
+              color: COLORS.textMuted,
+            }}
+          >
+            ⎋  Sign out
+          </button>
+        )}
+      </nav>
+
+      {/* The Grown-Up review tray (top-level overlay, above the drawer) */}
+      {trayText != null && (
+        <ReviewTray
+          key={trayKey}
+          text={trayText}
+          ctx={ctx}
+          onClose={() => setTrayText(null)}
+          onFiled={() => setDataVersion((v) => v + 1)}
+        />
+      )}
+
+      {/* Item detail editor */}
+      {editing && (
+        <ItemDetail
+          item={editing}
+          ctx={ctx}
+          onClose={() => setEditing(null)}
+          onSaved={() => setDataVersion((v) => v + 1)}
+        />
+      )}
     </div>
   );
 }
