@@ -11,9 +11,9 @@ import DayTimeline, { atMinutes } from "./DayTimeline.jsx";
 const moveToDay = (iso, day) => { const d = new Date(iso); const n = new Date(day); n.setHours(d.getHours(), d.getMinutes(), 0, 0); return n; };
 
 // Week-view drag wrappers — drop an entry on another day to reschedule it.
-function DroppableDay({ id, children }) {
+function DroppableDay({ id, children, style }) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  return <div ref={setNodeRef} style={{ borderRadius: 10, minHeight: 10, background: isOver ? withAlpha(COLORS.accent, 0.1) : "transparent", transition: "background 120ms ease" }}>{children}</div>;
+  return <div ref={setNodeRef} style={{ borderRadius: 10, minHeight: 10, background: isOver ? withAlpha(COLORS.accent, 0.1) : "transparent", transition: "background 120ms ease", ...style }}>{children}</div>;
 }
 function DraggableEvent({ id, children }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id });
@@ -291,19 +291,19 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
             {weekDays.map((day, i) => {
               const evs = eventsOn(day);
               return (
-                <div key={i} style={{ borderTop: i > 0 ? `1px solid ${COLORS.surfaceLight}` : "none", padding: i > 0 ? "12px 0 4px" : "0 0 4px" }}>
+                // The whole day block (heading + events) is the drop target, so an
+                // event can land anywhere over the day, not just its events line.
+                <DroppableDay key={i} id={`day-${i}`} style={{ borderTop: i > 0 ? `1px solid ${COLORS.surfaceLight}` : "none", padding: i > 0 ? "10px 4px 6px" : "0 4px 6px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                     <div style={{ width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : COLORS.surfaceLight }}>{day.getDate()}</div>
                     <span style={{ fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: isToday(day) ? COLORS.accent : COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 }}>{DOW[i]}{isToday(day) ? " · Today" : ""}</span>
                   </div>
-                  <DroppableDay id={`day-${i}`}>
-                    {evs.length ? evs.map((e) => (
-                      e._recurring
-                        ? <Event key={e.id} e={e} />
-                        : <DraggableEvent key={e.id} id={e.id}><Event e={e} /></DraggableEvent>
-                    )) : <div style={{ padding: "2px 0 4px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, fontStyle: "italic" }}>—</div>}
-                  </DroppableDay>
-                </div>
+                  {evs.length ? evs.map((e) => (
+                    e._recurring
+                      ? <Event key={e.id} e={e} />
+                      : <DraggableEvent key={e.id} id={e.id}><Event e={e} /></DraggableEvent>
+                  )) : <div style={{ padding: "2px 0 4px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, fontStyle: "italic" }}>—</div>}
+                </DroppableDay>
               );
             })}
           </div>
