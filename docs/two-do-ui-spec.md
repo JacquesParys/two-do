@@ -128,14 +128,18 @@ Switching between views: a secondary toggle or segmented control within the Date
 
 ### Navigation
 
-- **Swipe left/right** to move between adjacent periods (next/previous day, week, or month depending on current view)
-- **Tap the date header** to open a mini month picker for jumping to any date
+- **Header arrows** move between adjacent periods (prev/next day in Day, prev/next week in Week, prev/next month in Month).
+- **Day and Week share a 7-tile day strip** under the header (DOW label, date pill, an events dot). In **Day** it selects the focused day; in **Week** it selects the week's **start day** — tapping Wed re-anchors the week to run Wed→Tue and the list reflows. Week **defaults to a Monday** start on entry. Today always carries the coral pill, independent of which tile is selected.
+- **Week header** shows the range (`15–21 Jun`, spanning months as `29 Jun – 5 Jul`); its arrows step by a whole week.
 
 ### Visual treatment
 
 - **Routine items** are muted — the lane colour at low opacity, understated typography. They're the background rhythm.
 - **Exciting items** pop — emoji badge, a coral glow border, and if applicable a **sleeps countdown chip** ("12 sleeps"). These are the things worth looking forward to.
 - **Lane filtering** is available: show all, or filter to just Me / just You / just Us.
+- **Day-timeline blocks** scale their inner padding with height — tight on a due-time sliver, airier (header drops, wider gutters) on a multi-hour block.
+- **The now-line** is a quiet half-strength coral hairline layered *under* the entries — a block over the current time covers it; it shows only in the gaps.
+- **Scroll is implicit app-wide** — no scrollbars; clipped content (and chip-row edge fades) is the only "more below" affordance.
 
 ---
 

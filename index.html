@@ -8,16 +8,12 @@
     <style>
       html, body, #root { height: 100%; margin: 0; background: #1B2B2B; }
       body { -webkit-font-smoothing: antialiased; }
-      /* Themed scrollbars everywhere (no default white bars). */
-      * { scrollbar-width: thin; scrollbar-color: #2C4040 transparent; }
-      ::-webkit-scrollbar { width: 10px; height: 10px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #2C4040; border-radius: 6px; border: 2px solid #1B2B2B; }
-      ::-webkit-scrollbar-thumb:hover { background: #3A5050; }
-      ::-webkit-scrollbar-corner { background: transparent; }
-      /* Chip rows: no scrollbar, scroll implied by an edge fade. */
-      .no-sb { scrollbar-width: none; -ms-overflow-style: none; }
-      .no-sb::-webkit-scrollbar { display: none; }
+      /* Scroll is implicit — no scrollbars anywhere; clipped content (and the
+         existing edge-fade scrims on chip rows) implies more lies beyond.
+         Scrolling itself — wheel, touch, keyboard, programmatic — is unchanged. */
+      * { scrollbar-width: none; -ms-overflow-style: none; }
+      *::-webkit-scrollbar { width: 0; height: 0; display: none; }
+      /* .no-sb is now redundant (kept as a harmless no-op for existing usages). */
       /* Gentle float for the + button. */
       @keyframes twodoFloat {
         0%, 100% { transform: translateY(0); }

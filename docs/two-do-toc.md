@@ -34,7 +34,7 @@ When docs disagree, resolve it like this:
 | `two-do-nav-drawer.md` | Nav moved from the top chip bar to a right-edge drawer (push-left) opened by a top-right menu button; sign-out moved in too | **Built** 2026-06-19 |
 | `two-do-buttons-bottom.md` | Proposed — bottom rework: orbiting FAB pair (flat-coral `+` + liquid-glass Grown-Up), Grown-Up un-pinned to an on-demand sheet, bottom freed except lane chips | Proposed — not yet built |
 | `two-do-shell-audit.md` | Audit of both shell-chrome docs vs. the live shell + build notes for the nav drawer | Current — audit |
-| `plans/two-do-dates-day-week-refinements.md` | Proposed — Dates view: Week gets the Day header + a selectable week-start day strip (Monday default), timeline blocks gain height-scaled padding, the now-line is quieted + layered under entries; plus the app-wide decision to hide all scrollbars (implicit scroll) | Proposed — not yet built |
+| `plans/two-do-dates-day-week-refinements.md` | Dates view: Week gained the Day header + a selectable week-start day strip (Monday default), timeline blocks gained height-scaled padding, the now-line is quieted + layered under entries; plus the app-wide implicit-scroll (no scrollbars) change | **Built** 2026-06-19 |
 | `two-do-shell.jsx` | Running React prototype of the app shell | **Current — visual/behavioural source of truth** |
 
 ---

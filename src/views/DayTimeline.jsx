@@ -304,9 +304,11 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
           </div>
         ))}
 
-        {/* Now line (no dot) */}
+        {/* Now line (no dot) — a quiet reference: thin, half-strength coral, and
+            layered UNDER the entries (zIndex 1 < blocks' 2) so a block over the
+            current time covers it; it only shows in the gaps. */}
         {showNow && (
-          <div style={{ position: "absolute", left: GUTTER, right: 6, top: nowMin * pxPerMin, height: 0, borderTop: `1.5px solid ${COLORS.accent}`, zIndex: 6, pointerEvents: "none" }} />
+          <div style={{ position: "absolute", left: GUTTER, right: 6, top: nowMin * pxPerMin, height: 0, borderTop: `1px solid ${withAlpha(COLORS.accent, 0.45)}`, zIndex: 1, pointerEvents: "none" }} />
         )}
 
         {/* Items (right of the hour gutter) — one treatment for events and tasks.
@@ -330,6 +332,12 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
             const dragging = !!d && d.moved;
             const resizing = d && (d.mode === "resizeTop" || d.mode === "resizeBottom");
             const hPx = Math.max(durMin * pxPerMin, 24);
+            // Padding scales with block height: tight on a due-time sliver, airier
+            // on a multi-hour block. t ramps 0→1 between a min block and ~3h.
+            const t = Math.min(1, Math.max(0, (hPx - 48) / 180));
+            const padTop = 4 + 10 * t;            // 4 → 14: header drops as it grows
+            const padSide = SPACE[2] + 4 * t;     // 8 → 12: right gutter (time + badge)
+            const padLeft = SPACE[2] + 2 + 6 * t; // 10 → 16: extra title inset at all sizes
             const laneCol = lc(b.it);
             const nodeCol = b.it.color || laneCol;
             const variant = b.it.exciting_fx || "glow";
@@ -353,7 +361,7 @@ export default function DayTimeline({ day, items, ctx, summaries = {}, onOpenIte
                     borderRadius: RADIUS.lg,
                     background: `linear-gradient(160deg, ${COLORS.bgRaised}, ${COLORS.surface})`,
                     ...exStyle,
-                    overflow: "hidden", padding: `4px ${SPACE[2]}px`,
+                    overflow: "hidden", padding: `${padTop}px ${padSide}px ${padTop}px ${padLeft}px`,
                     cursor: dragging ? "grabbing" : "grab", touchAction: d ? "none" : "pan-y", opacity: dragging ? 0.94 : 1,
                   }}
                 >

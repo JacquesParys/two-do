@@ -2,7 +2,11 @@
 
 *Three changes to the Dates view, from Jacques' annotated Day/Week mockups (2026-06-19). All live in `src/views/DatesView.jsx` and `src/views/DayTimeline.jsx`; no data-layer or schema work.*
 
-> Status: **proposed** (not yet built). `src/views/DatesView.jsx` + `src/views/DayTimeline.jsx` are the source of truth for current behaviour; this doc is the target.
+> Status: **built** 2026-06-19 (`DatesView.jsx`, `DayTimeline.jsx`, `index.html`). Outcome folded into `two-do-ui-spec.md` §4. Two refinements vs. this plan:
+> 1. Day and Week derive their day-tile strips from *separate* week windows — Week from the re-anchorable `weekStart` state, Day from `startOfWeek(ref)` — so the Day strip keeps tracking day navigation.
+> 2. Week got its own early return (mirroring Day) rather than the generic scroller: the toggle, range header, and day strip are **pinned**, and only the day-card list scrolls. (The §1 "generic scroller eats the strip" height note is therefore moot.)
+>
+> `src/views/*` are the behavioural source of truth.
 
 The three asks, in the mockups' numbering:
 

@@ -40,6 +40,12 @@ const fmtTime = (d) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0"
 const sleepsUntil = (d) => { const t = new Date(); t.setHours(0, 0, 0, 0); const x = new Date(d); x.setHours(0, 0, 0, 0); return Math.round((x - t) / 86400000); };
 const eventDate = (e) => new Date(e.start_at || e.due_at);
 const monthId = (d) => `m-${d.getFullYear()}-${d.getMonth()}`;
+// A week-range label, e.g. "15–21 Jun" or, across months, "29 Jun – 5 Jul".
+const fmtRange = (a, b) => {
+  const sameMonth = a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
+  const mA = MONTHS[a.getMonth()].slice(0, 3), mB = MONTHS[b.getMonth()].slice(0, 3);
+  return sameMonth ? `${a.getDate()}–${b.getDate()} ${mB}` : `${a.getDate()} ${mA} – ${b.getDate()} ${mB}`;
+};
 
 
 const dowStyle = { textAlign: "center", fontSize: 9, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: COLORS.textMuted, textTransform: "uppercase", padding: "4px 0" };
@@ -113,6 +119,9 @@ function MonthBlock({ date, rootRef, eventsOn, onDayClick, onOpenItem, ctx, onVi
 const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 }) => {
   const [ref, setRef] = useState(() => new Date());
   const [mode, setMode] = useState("week");
+  // Week view's start day is re-anchorable (tap a tile to start the week there);
+  // independent of `ref` (which drives Day view). Defaults to Monday on entry.
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [ctx, setCtx] = useState(null);
   const [events, setEvents] = useState([]);
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
@@ -178,11 +187,16 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     return () => clearTimeout(t);
   }, [mode]);
 
+  // Entering Week view re-anchors the window to the Monday of the current ref.
+  useEffect(() => { if (mode === "week") setWeekStart(startOfWeek(ref)); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const viewer = ctx?.viewerSlot || SLOTS.A;
   const step = (dir) => {
     if (mode === "day") setRef((r) => addDays(r, dir));
     else setRef((r) => addDays(r, dir * 7));
   };
+  // Week arrows move the window by a week (keeping the chosen start day).
+  const stepWeek = (dir) => setWeekStart((w) => addDays(w, dir * 7));
 
   const passesFilter = (e) => laneFilter === "all" || e.lane === laneFilter;
   // Expand recurring items into per-day occurrences (virtual; not stored).
@@ -216,12 +230,13 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     );
   };
 
-  const weekStart = startOfWeek(ref);
+  // Week mode's 7 days derive from the re-anchorable weekStart; the Day strip's
+  // 7 days always frame `ref`'s week (Monday-locked) so it tracks day navigation.
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const dayWeekDays = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(ref), i));
 
-
-  // The big serif date heading, flanked by nav arrows — shared by Day and Week.
-  // Day mode advances by a day, Week mode by a week (handled in `step`).
+  // The big serif date heading, flanked by nav arrows. Day mode shows a single
+  // day (advances by a day); Week mode shows the range (advances by a week).
   const fullHeader = (
     <div style={{ display: "flex", alignItems: "center", gap: SPACE[3], marginBottom: 14 }}>
       <IconButton onClick={() => step(-1)} label="Previous" size={32} icon={<Chevron dir="left" />} />
@@ -229,6 +244,31 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
         {DOW[(ref.getDay() + 6) % 7]} {ref.getDate()} {MONTHS[ref.getMonth()].slice(0, 3)}{isToday(ref) ? " · Today" : ""}
       </span>
       <IconButton onClick={() => step(1)} label="Next" size={32} icon={<Chevron dir="right" />} />
+    </div>
+  );
+
+  const weekHeader = (
+    <div style={{ display: "flex", alignItems: "center", gap: SPACE[3], marginBottom: 14 }}>
+      <IconButton onClick={() => stepWeek(-1)} label="Previous week" size={32} icon={<Chevron dir="left" />} />
+      <span style={{ flex: 1, textAlign: "center", fontFamily: "'Fraunces', serif", fontSize: 18, color: COLORS.textPrimary }}>
+        {fmtRange(weekDays[0], weekDays[6])}
+      </span>
+      <IconButton onClick={() => stepWeek(1)} label="Next week" size={32} icon={<Chevron dir="right" />} />
+    </div>
+  );
+
+  // The big 7-day tile strip, shared by Day and Week. `days` is the week to show,
+  // `onPick(day)` re-anchors (Day: the focused day; Week: the start day), and
+  // `selected(day)` flags the highlighted tile. Today always gets the coral pill.
+  const dayStrip = ({ days, onPick, selected }) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 12, flexShrink: 0 }}>
+      {days.map((day, i) => (
+        <button key={i} onClick={() => onPick(day)} className="focusable" style={{ textAlign: "center", padding: "6px 0", borderRadius: 12, border: "none", cursor: "pointer", background: selected(day) ? COLORS.surfaceLight : "transparent" }}>
+          <div style={{ fontSize: 9, color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase" }}>{DOW[(day.getDay() + 6) % 7]}</div>
+          <div style={{ width: 30, height: 30, borderRadius: 15, display: "flex", alignItems: "center", justifyContent: "center", margin: "4px auto 0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : "transparent" }}>{day.getDate()}</div>
+          <div style={{ minHeight: 6, marginTop: 3 }}>{eventsOn(day).length > 0 && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: COLORS.textMuted }} />}</div>
+        </button>
+      ))}
     </div>
   );
 
@@ -302,36 +342,43 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     );
   }
 
-  // ----- Day / Week -----
-  let body;
+  // ----- Week: pinned header + day strip; only the day-card list scrolls -----
   if (mode === "week") {
-    body = (
-      <>
-        {fullHeader}
-        <DndContext sensors={weekSensors} autoScroll={{ threshold: { x: 0, y: 0.2 }, acceleration: 12 }} collisionDetection={closestCenter} onDragStart={(e) => { window.getSelection?.()?.removeAllRanges?.(); setWeekActiveId(e.active.id); }} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {weekDays.map((day, i) => {
-              const evs = eventsOn(day);
-              return (
-                // The whole day block (heading + events) is the drop target, so an
-                // event can land anywhere over the day, not just its events line.
-                <DroppableDay key={i} id={`day-${i}`} style={{ borderTop: i > 0 ? `1px solid ${COLORS.surfaceLight}` : "none", padding: i > 0 ? "10px 4px 6px" : "0 4px 6px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : COLORS.surfaceLight }}>{day.getDate()}</div>
-                    <span style={{ fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: isToday(day) ? COLORS.accent : COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 }}>{DOW[i]}{isToday(day) ? " · Today" : ""}</span>
-                  </div>
-                  {evs.length ? evs.map((e) => (
-                    e._recurring
-                      ? <Event key={e.id} e={e} />
-                      : <DraggableEvent key={e.id} id={e.id}><Event e={e} /></DraggableEvent>
-                  )) : <div style={{ padding: "2px 0 4px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, fontStyle: "italic" }}>—</div>}
-                </DroppableDay>
-              );
-            })}
-          </div>
-          <DragOverlay>{weekActiveId && events.find((e) => e.id === weekActiveId) ? <Event e={events.find((e) => e.id === weekActiveId)} dragging /> : null}</DragOverlay>
-        </DndContext>
-      </>
+    return (
+      <div style={{ padding: "0 8px" }}>
+        {header}
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 270px)" }}>
+          {weekHeader}
+          {dayStrip({ days: weekDays, onPick: (day) => setWeekStart(day), selected: (day) => sameDay(day, weekDays[0]) })}
+          <DndContext sensors={weekSensors} autoScroll={{ threshold: { x: 0, y: 0.2 }, acceleration: 12 }} collisionDetection={closestCenter} onDragStart={(e) => { window.getSelection?.()?.removeAllRanges?.(); setWeekActiveId(e.active.id); }} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
+            {/* Only the day cards scroll. The 28px side gutter keeps exciting glow
+                from clipping at the scroll container's padding box. */}
+            <div className="no-sb" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "4px 28px 16px" }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {weekDays.map((day, i) => {
+                  const evs = eventsOn(day);
+                  return (
+                    // The whole day block (heading + events) is the drop target, so an
+                    // event can land anywhere over the day, not just its events line.
+                    <DroppableDay key={i} id={`day-${i}`} style={{ borderTop: i > 0 ? `1px solid ${COLORS.surfaceLight}` : "none", padding: i > 0 ? "10px 4px 6px" : "0 4px 6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : COLORS.surfaceLight }}>{day.getDate()}</div>
+                        <span style={{ fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500, color: isToday(day) ? COLORS.accent : COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 }}>{DOW[(day.getDay() + 6) % 7]}{isToday(day) ? " · Today" : ""}</span>
+                      </div>
+                      {evs.length ? evs.map((e) => (
+                        e._recurring
+                          ? <Event key={e.id} e={e} />
+                          : <DraggableEvent key={e.id} id={e.id}><Event e={e} /></DraggableEvent>
+                      )) : <div style={{ padding: "2px 0 4px", fontSize: 12, fontFamily: "'DM Sans', sans-serif", color: COLORS.textMuted, fontStyle: "italic" }}>—</div>}
+                    </DroppableDay>
+                  );
+                })}
+              </div>
+            </div>
+            <DragOverlay>{weekActiveId && events.find((e) => e.id === weekActiveId) ? <Event e={events.find((e) => e.id === weekActiveId)} dragging /> : null}</DragOverlay>
+          </DndContext>
+        </div>
+      </div>
     );
   }
 
@@ -342,15 +389,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
         {header}
         <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 270px)" }}>
           {fullHeader}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 12, flexShrink: 0 }}>
-            {weekDays.map((day, i) => (
-              <button key={i} onClick={() => setRef(day)} className="focusable" style={{ textAlign: "center", padding: "6px 0", borderRadius: 12, border: "none", cursor: "pointer", background: sameDay(day, ref) ? COLORS.surfaceLight : "transparent" }}>
-                <div style={{ fontSize: 9, color: COLORS.textMuted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, textTransform: "uppercase" }}>{DOW[i]}</div>
-                <div style={{ width: 30, height: 30, borderRadius: 15, display: "flex", alignItems: "center", justifyContent: "center", margin: "4px auto 0", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: isToday(day) ? 600 : 400, color: isToday(day) ? COLORS.bg : COLORS.textPrimary, background: isToday(day) ? COLORS.accent : "transparent" }}>{day.getDate()}</div>
-                <div style={{ minHeight: 6, marginTop: 3 }}>{eventsOn(day).length > 0 && <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: COLORS.textMuted }} />}</div>
-              </button>
-            ))}
-          </div>
+          {dayStrip({ days: dayWeekDays, onPick: (day) => setRef(day), selected: (day) => sameDay(day, ref) })}
           <DayTimeline day={ref} items={eventsOn(ref)} ctx={ctx} summaries={summaries} onOpenItem={openItem} onChange={persist}
             onCreate={(startMin, endMin) => onOpenItem?.({ type: "event", kind: "routine", lane: laneFilter !== "all" ? laneFilter : SLOTS.SHARED, start_at: atMinutes(ref, startMin).toISOString(), end_at: atMinutes(ref, endMin).toISOString() })} />
         </div>
@@ -358,16 +397,8 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     );
   }
 
-  return (
-    <div style={{ padding: "0 8px" }}>
-      {header}
-      {/* Padding is the only lever here: a vertical scroll container always clips
-          at its padding box (overflow-x can't be 'visible' alongside overflow-y
-          'auto'), so the gutter must be ~as wide as the glow bleed (~28px) or the
-          exciting fx get cut off left/right. */}
-      <div className="no-sb" style={{ height: "calc(100dvh - 270px)", overflowY: "auto", overflowX: "hidden", padding: "16px 28px" }}>{body}</div>
-    </div>
-  );
+  // Day / Week / Month all return above; this is only reached for an unknown mode.
+  return null;
 };
 
 export default DatesView;
