@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { COLORS, MOTION, ensureFonts } from "./theme";
+import { COLORS, ensureFonts } from "./theme";
 import { getBootstrap } from "./lib/data.js";
 import { signOut } from "./lib/auth.js";
 import { isMockMode } from "./lib/supabase.js";
@@ -14,6 +14,18 @@ import TwoCentsView from "./views/TwoCentsView.jsx";
 ensureFonts();
 
 const TABS = ["Dates", "Cards", "Lists", "Two Cents"];
+
+// The nav drawer's width is ALSO the content push distance, so the content's
+// right edge and the drawer's left edge translate in perfect lockstep — a true
+// "push", not two panes sliding past each other at different speeds.
+const DRAWER_W = 230;
+
+// Drawer open/close motion. Symmetric ease-in-out (no overshoot / settle-bounce),
+// deliberately unhurried. The stage push and the drawer slide share these exact
+// values so they move as one locked unit.
+const DRAWER_MS = 420;
+const DRAWER_EASE = "ease-in-out";
+const DRAWER_TX = `transform ${DRAWER_MS}ms ${DRAWER_EASE}`;
 
 const PLACEHOLDERS = [
   "The Grown-Up is ready for your chaos…",
@@ -134,16 +146,22 @@ export default function TwoDoShell() {
         borderRight: isDesktop ? `1px solid ${COLORS.surfaceLight}` : "none",
       }}
     >
-      {/* Stage — header + content + lane filter + input bar. Pushes left when
-          the nav drawer opens (push, not pure overlay). See two-do-nav-drawer.md. */}
+      {/* Stage — header + content + lane filter + input bar. Pushes left by the
+          drawer's full width when it opens, so the two move as one (see DRAWER_W).
+          flex:1 + minHeight:0 + overflow:hidden keep ALL scrolling inside the
+          content area below — otherwise a view's scrollIntoView (DatesView's
+          month/day jump) scrolls the whole shell and the header vanishes.
+          No "motion" class: the push is an explicit slide the user asked for. */}
       <div
-        className="motion"
         style={{
-          height: "100%",
+          flex: 1,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          transform: navOpen ? "translateX(-150px)" : "translateX(0)",
-          transition: `transform ${MOTION.slow}ms ${MOTION.ease}`,
+          overflow: "hidden",
+          transform: navOpen ? `translateX(-${DRAWER_W}px)` : "translateX(0)",
+          transition: DRAWER_TX,
+          willChange: "transform",
         }}
       >
       {/* Header — brand left, menu button right */}
@@ -191,10 +209,13 @@ export default function TwoDoShell() {
       </div>
 
       {/* Content area. On desktop, single-column views stay readable (capped
-          + centered); Cards (tab 1) spreads its columns full width. */}
+          + centered); Cards (tab 1) spreads its columns full width.
+          minHeight:0 lets this flex child shrink so it owns the scroll (and a
+          view's scrollIntoView stays contained here, never the whole shell). */}
       <div
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: "auto",
           overflowX: "hidden",
           paddingTop: 20,
@@ -343,21 +364,25 @@ export default function TwoDoShell() {
       <nav
         ref={drawerRef}
         aria-label="Views"
-        className="motion"
         style={{
           position: "absolute",
+          // top + bottom anchor sizes the drawer to the shell's exact height
+          // (no fragile percentage), so the pinned sign-out can't fall off-screen.
           top: 0,
+          bottom: 0,
           right: 0,
-          height: "100%",
-          width: 230,
+          width: DRAWER_W,
+          boxSizing: "border-box",
+          overflowY: "auto", // safety net: sign-out stays reachable on short viewports
           background: COLORS.bgRaised,
           borderLeft: `1px solid ${COLORS.surfaceLight}`,
           transform: navOpen ? "translateX(0)" : "translateX(100%)",
-          transition: `transform ${MOTION.slow}ms ${MOTION.ease}`,
+          transition: DRAWER_TX,
+          willChange: "transform",
           zIndex: 6,
           display: "flex",
           flexDirection: "column",
-          padding: "18px 12px",
+          padding: "18px 12px calc(18px + env(safe-area-inset-bottom, 0px))",
         }}
       >
         <div
