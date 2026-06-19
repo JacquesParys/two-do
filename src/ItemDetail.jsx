@@ -112,6 +112,16 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
   }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  // Switching task↔event moves the date/time across so it isn't re-typed:
+  // a task anchors on due_at, an event on start_at (end_at carries either way).
+  function changeType(v) {
+    setForm((f) => {
+      const next = { ...f, type: v };
+      if (v === "event") { if (next.due_at && !next.start_at) next.start_at = next.due_at; next.due_at = null; }
+      else if (v === "task") { if (next.start_at && !next.due_at) next.due_at = next.start_at; next.start_at = null; }
+      return next;
+    });
+  }
   const viewer = ctx?.viewerSlot || SLOTS.A;
   const other = viewer === SLOTS.A ? SLOTS.B : SLOTS.A;
   const laneOpts = [viewer, other, SLOTS.SHARED].map((slot) => ({ slot, label: laneLabel(slot, viewer, ctx?.space) }));
@@ -173,9 +183,16 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
           <Segmented
             options={[{ value: "task", label: "Task" }, { value: "event", label: "Event" }, { value: "shopping", label: "List" }, { value: "expense", label: "Expense" }]}
             value={form.type}
-            onChange={(v) => set("type", v)}
+            onChange={changeType}
             accent={accent}
           />
+
+          {form.type === "task" && columns.length > 0 && (
+            <>
+              <Label>Column</Label>
+              <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} accent={accent} />
+            </>
+          )}
 
           {form.type === "shopping" && (
             <>
@@ -215,12 +232,13 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
                     value={recurPreset}
                     onChange={setRecurPreset}
                     accent={accent}
+                    compact
                   />
                   {recurPreset === "custom" && (
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
                       <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: COLORS.textSecondary }}>Every</span>
                       <input type="number" min="1" value={recurInterval} onChange={(e) => set("recur_interval", Math.max(1, Number(e.target.value) || 1))} style={{ ...timeInput, width: 64, textAlign: "center" }} />
-                      <Segmented options={[{ value: "daily", label: "Days" }, { value: "weekly", label: "Weeks" }, { value: "monthly", label: "Months" }]} value={form.recur_freq} onChange={(v) => set("recur_freq", v)} accent={accent} />
+                      <Segmented options={[{ value: "daily", label: "Days" }, { value: "weekly", label: "Weeks" }, { value: "monthly", label: "Months" }]} value={form.recur_freq} onChange={(v) => set("recur_freq", v)} accent={accent} compact />
                     </div>
                   )}
                   {form.recur_freq && (
@@ -231,13 +249,6 @@ export default function ItemDetail({ item, ctx, onClose, onSaved }) {
                   )}
                 </>
               )}
-            </>
-          )}
-
-          {form.type === "task" && columns.length > 0 && (
-            <>
-              <Label>Column</Label>
-              <Segmented options={columns.map((c) => ({ value: c.id, label: c.label }))} value={form.column_id} onChange={(v) => set("column_id", v)} accent={accent} />
             </>
           )}
 
@@ -343,11 +354,11 @@ function Label({ children }) {
   return <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: COLORS.textSecondary, margin: "12px 0 6px" }}>{children}</div>;
 }
 function Row({ children }) { return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>{children}</div>; }
-function Segmented({ options, value, onChange, accent = COLORS.accent }) {
+function Segmented({ options, value, onChange, accent = COLORS.accent, compact = false }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {options.map((o) => (
-        <button key={o.value} onClick={() => onChange(o.value)} style={{ padding: "8px 14px", borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, background: value === o.value ? accent : COLORS.surface, color: value === o.value ? COLORS.bg : COLORS.textSecondary }}>{o.label}</button>
+        <button key={o.value} onClick={() => onChange(o.value)} style={{ padding: compact ? "5px 10px" : "8px 14px", borderRadius: compact ? 9 : 12, border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontSize: compact ? 12 : 13, fontWeight: 500, background: value === o.value ? accent : COLORS.surface, color: value === o.value ? COLORS.bg : COLORS.textSecondary }}>{o.label}</button>
       ))}
     </div>
   );
