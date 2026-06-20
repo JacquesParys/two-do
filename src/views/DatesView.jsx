@@ -321,10 +321,13 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
   if (mode === "month") {
     const months = Array.from({ length: 37 }, (_, i) => addMonths(startOfMonth(new Date()), i - 18));
     return (
-      <div style={{ padding: "0 8px" }}>
+      // Bounded flex box (like week/day) so only the inner list scrolls — keeps
+      // the mode header + weekday strip pinned and stops scrollIntoView from
+      // dragging the whole content area (which hid the header).
+      <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", height: "calc(100dvh - 134px)" }}>
         {header}
         {monthFullHeader}
-        <div ref={monthScrollRef} className="no-sb" style={{ height: "calc(100dvh - 180px)", overflowY: "auto" }}>
+        <div ref={monthScrollRef} className="no-sb" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           {months.map((m) => (
             <MonthBlock
               key={monthId(m)}

@@ -9,17 +9,23 @@ import LaneFilter from "../components/LaneFilter.jsx";
 // lanes (Me / You / Us) + the ✦ Grown-Up.
 //   • Tap a lane orb   → onCreate(laneSlot)  (new item pre-set to that lane)
 //   • Tap the ✦ orb    → onGrownUp()         (open the capture sheet)
-//   • Drag a lane orb out past the latch → onFilter(laneSlot); it parks as the
-//     active-filter indicator. Tap / drag the parked orb back → onFilter("all").
+//   • Drag a lane orb out toward the centre of the screen → onFilter(laneSlot);
+//     it parks above the cluster as the active-filter indicator. Tap it / drag it
+//     back to the corner → onFilter("all").
 //   • Drag the ✦ orb   → springs back, no effect in v1 (reserved, see doc §12).
+// The canvas spans the whole stage so dragged orbs aren't cropped; pointer input
+// is caught by a small corner region and tracked globally via pointer capture.
 // Engine state lives in refs (never React state) so the rAF loop never re-renders.
 
-// Region (a fixed box pinned bottom-right; canvas is transparent so only orbs show)
-const DOCK_W = 200;
-const DOCK_H = 210;
+// Corner region that catches the initial tap/drag (the resting cluster lives here;
+// once a drag starts, pointer capture tracks it across the whole stage).
+const HIT_W = 250;
+const HIT_H = 330;
 
-// ── Engine tunables (scaled down from the full-window prototype for this dock) ──
-const RES = 0.5; // offscreen field scale; bilinear-upscaled to display
+// ── Engine tunables ──
+// Field is rendered at device-pixel sharpness, capped to this many offscreen
+// pixels for perf (resolution drops only when an orb is flung far out).
+const OFF_BUDGET = 200000;
 const TILT = Math.PI * 0.38;
 const cosTilt = Math.cos(TILT);
 const sinTilt = Math.sin(TILT);
@@ -27,12 +33,15 @@ const DEPTH_SCALE = 0.0025; // z → ball size
 const DEPTH_BRIGHT = 0.1; // z → field brightness
 const THR = 1.0; // merge threshold
 const EDGE = 0.15; // anti-alias half-band
-const GRAV = 1500; // ambient inter-ball pull
+const GRAV = 900; // ambient inter-ball pull (lower → orbs stay more distinct)
 const MIN_DIST = 18; // gravity softening
 const BURST_MULT = 2.6; // speed-burst multiplier
 const PROX_DIST = 90; // sparkle proximity-spin falloff
-const LATCH_RADIUS = 72; // drag-out distance that latches a filter
-const CLEAR_RADIUS = 52; // drag a parked orb back inside this → clear filter
+// Latch as a fraction of the corner→centre distance: you must drag roughly toward
+// the middle of the screen before the filter latches (LATCH), and drag a parked
+// orb back near the corner to clear it (CLEAR).
+const LATCH_FRAC = 0.6;
+const CLEAR_FRAC = 0.3;
 
 // Near-white warm tint for the ✦ Grown-Up (not a lane color).
 const SPARK_RGB = { r: 248, g: 240, b: 235 };
@@ -49,13 +58,18 @@ function hexToRgb(hex) {
 
 // Build the four orbs. `role` ties an orb to its lane slot (resolved from ctx).
 function makeBalls() {
+  // Small orbit radii + large ball radii → a tight, chunky metaball swarm.
   return [
-    { role: "us",    slot: SLOTS.SHARED, angle: 0,              baseOrbitR: 38, orbitR: 38, speed: 0.4,  baseSpeed: 0.4,  baseR: 22, r: 22, fSize: 15, fontW: "600", phaseOffset: 0,   x: 0, y: 0, z: 0, dragging: false, activated: 0 },
-    { role: "spark", slot: null,         angle: Math.PI * 0.55, baseOrbitR: 44, orbitR: 44, speed: 0.38, baseSpeed: 0.38, baseR: 16, r: 16, fSize: 16, fontW: "600", phaseOffset: 1.3, x: 0, y: 0, z: 0, dragging: false, activated: 0, spinAngle: 0 },
-    { role: "me",    slot: null,         angle: Math.PI,        baseOrbitR: 41, orbitR: 41, speed: 0.42, baseSpeed: 0.42, baseR: 20, r: 20, fSize: 15, fontW: "600", phaseOffset: 2.7, x: 0, y: 0, z: 0, dragging: false, activated: 0 },
-    { role: "you",   slot: null,         angle: Math.PI * 1.5,  baseOrbitR: 47, orbitR: 47, speed: 0.36, baseSpeed: 0.36, baseR: 19, r: 19, fSize: 14, fontW: "600", phaseOffset: 4.1, x: 0, y: 0, z: 0, dragging: false, activated: 0 },
+    { role: "us",    slot: SLOTS.SHARED, angle: 0,              baseOrbitR: 26, orbitR: 26, speed: 0.4,  baseSpeed: 0.4,  baseR: 26, r: 26, fSize: 16, fontW: "600", phaseOffset: 0,   x: 0, y: 0, z: 0, dragging: false, activated: 0 },
+    { role: "spark", slot: null,         angle: Math.PI * 0.55, baseOrbitR: 40, orbitR: 40, speed: 0.38, baseSpeed: 0.38, baseR: 17, r: 17, fSize: 16, fontW: "600", phaseOffset: 1.3, x: 0, y: 0, z: 0, dragging: false, activated: 0, spinAngle: 0 },
+    { role: "me",    slot: null,         angle: Math.PI,        baseOrbitR: 32, orbitR: 32, speed: 0.42, baseSpeed: 0.42, baseR: 23, r: 23, fSize: 15, fontW: "600", phaseOffset: 2.7, x: 0, y: 0, z: 0, dragging: false, activated: 0 },
+    { role: "you",   slot: null,         angle: Math.PI * 1.5,  baseOrbitR: 48, orbitR: 48, speed: 0.36, baseSpeed: 0.36, baseR: 21, r: 21, fSize: 14, fontW: "600", phaseOffset: 4.1, x: 0, y: 0, z: 0, dragging: false, activated: 0 },
   ];
 }
+
+// While dragging, the orb's bottom-right edge sits at the finger so the body stays
+// visible up-left of the thumb. Offset = ball radius × this factor.
+const DRAG_ANCHOR = 0.9;
 
 function orbitPos(angle, R) {
   const ox = Math.cos(angle) * R;
@@ -69,7 +83,7 @@ function resolveIdentity(ball, ctx) {
   const other = viewer === SLOTS.A ? SLOTS.B : SLOTS.A;
   if (ball.role === "spark") return { label: "✦", color: SPARK_RGB, slot: null };
   const slot = ball.role === "us" ? SLOTS.SHARED : ball.role === "me" ? viewer : other;
-  const label = ball.role === "us" ? laneLabel(SLOTS.SHARED, viewer, ctx?.space) : laneLabel(slot, viewer, ctx?.space);
+  const label = laneLabel(slot, viewer, ctx?.space);
   const hex = ctx ? laneColor(slot, ctx.people, COLORS) : ball.role === "me" ? COLORS.laneMe : ball.role === "you" ? COLORS.laneYou : COLORS.laneUs;
   return { label, color: hexToRgb(hex), slot };
 }
@@ -96,12 +110,15 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
 
   // Mutable engine state (never triggers a render).
   const ballsRef = useRef(makeBalls());
-  const originRef = useRef({ x: DOCK_W * 0.54, y: DOCK_H * 0.56 });
-  const parkRef = useRef({ x: DOCK_W * 0.5, y: DOCK_H * 0.17 });
+  const originRef = useRef({ x: 0, y: 0 });
+  const parkRef = useRef({ x: 0, y: 0 });
   const labelCachesRef = useRef([]);
   const rafRef = useRef(0);
-  const dimsRef = useRef({ W: DOCK_W, H: DOCK_H, dpr: 1 });
-  const flashRef = useRef(null);
+  const dimsRef = useRef({ W: HIT_W, H: HIT_H, dpr: 1 });
+  const offCanvasRef = useRef(null);
+  const startLoopRef = useRef(null);
+  const mouseRef = useRef({ x: 0, y: 0 });
+  const dragRef = useRef({ ball: -1, hasMoved: false, startX: 0, startY: 0 });
 
   // Live copies of props the loop/handlers read (so the loop stays mount-only).
   const cbRef = useRef({ onCreate, onGrownUp, onFilter });
@@ -119,7 +136,7 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     const balls = ballsRef.current;
     const caches = [];
     for (const b of balls) {
-      const pad = 12;
+      const pad = 6;
       const tmp = document.createElement("canvas").getContext("2d");
       tmp.font = `${b.fontW} ${b.fSize}px ${FONTS.display}`;
       const m = tmp.measureText(b.label || "");
@@ -133,7 +150,7 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
       c.height = th * 2;
       const lctx = c.getContext("2d");
       lctx.scale(2, 2);
-      lctx.filter = "blur(1.1px)";
+      // No blur — crisp text (2× supersample keeps it sharp on the downscale).
       lctx.font = `${b.fontW} ${b.fSize}px ${FONTS.display}`;
       lctx.textAlign = "center";
       lctx.fillStyle = COLORS.bg;
@@ -159,30 +176,95 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx]);
 
-  const offCanvasRef = useRef(null);
-  const startLoopRef = useRef(null);
-
-  // ── Canvas sizing (DPR-aware) ──
+  // ── Canvas sizing (DPR-aware). Canvas spans the whole stage; origin sits in the
+  // bottom-right corner so the resting cluster lives there. ──
   const resize = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const W = canvas.clientWidth || DOCK_W;
-    const H = canvas.clientHeight || DOCK_H;
+    const W = canvas.clientWidth || HIT_W;
+    const H = canvas.clientHeight || HIT_H;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     const ctx2d = canvas.getContext("2d");
     ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
     dimsRef.current = { W, H, dpr };
-    originRef.current = { x: W * 0.54, y: H * 0.56 };
-    parkRef.current = { x: W * 0.5, y: H * 0.17 };
-    if (offCanvasRef.current) {
-      offCanvasRef.current.width = Math.max(1, Math.floor(W * RES));
-      offCanvasRef.current.height = Math.max(1, Math.floor(H * RES));
-    }
+    originRef.current = { x: W - 88, y: H - 108 };
+    parkRef.current = { x: W - 88, y: H - 268 };
   };
 
-  // ── Main engine: canvas, listeners, rAF loop. Mount-only. ──
+  // hit-test in canvas (screen) coords, front-to-back.
+  const hitTest = (mx, my) => {
+    const balls = ballsRef.current;
+    const order = balls.map((b, i) => ({ i, z: b.z })).sort((a, b) => b.z - a.z);
+    for (const s of order) {
+      const b = balls[s.i];
+      if (Math.hypot(mx - b.x, my - b.y) < b.r + 12) return s.i;
+    }
+    return -1;
+  };
+  const getPos = (e) => {
+    const r = canvasRef.current.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  // ── Pointer input (on the corner hit region; pointer-capture tracks globally) ──
+  const onPointerDown = (e) => {
+    if (paused) return;
+    const p = getPos(e);
+    const hit = hitTest(p.x, p.y);
+    if (hit < 0) return; // empty corner → let the gesture pass through
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    mouseRef.current = p;
+    dragRef.current = { ball: hit, hasMoved: false, startX: p.x, startY: p.y };
+    ballsRef.current[hit].dragging = true;
+  };
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (d.ball < 0) return;
+    const p = getPos(e);
+    mouseRef.current = p;
+    if (Math.hypot(p.x - d.startX, p.y - d.startY) > 5) d.hasMoved = true;
+  };
+  const onPointerUp = (e) => {
+    const d = dragRef.current;
+    if (d.ball < 0) return;
+    const balls = ballsRef.current;
+    const b = balls[d.ball];
+    const origin = originRef.current;
+    const { W, H } = dimsRef.current;
+    const { onCreate, onGrownUp, onFilter } = cbRef.current;
+    const active = laneFilterRef.current;
+    const p = getPos(e);
+    const EDGE = 12;
+    // Flung off the screen (left/top edge, or beyond any edge) → clear the filter.
+    const offscreen = p.x < EDGE || p.y < EDGE || p.x > W + 4 || p.y > H + 4;
+    if (!d.hasMoved) {
+      // ── TAP ──
+      if (b.role === "spark") onGrownUp && onGrownUp();
+      else if (b.slot && active === b.slot) onFilter && onFilter("all"); // tap the parked orb clears
+      else onCreate && onCreate(b.slot);
+      b.activated = 1;
+    } else if (offscreen) {
+      // ── DRAG off-screen: reset to all (any orb) ──
+      if (active !== "all") onFilter && onFilter("all");
+    } else if (b.role !== "spark" && b.slot) {
+      // ── DRAG release: latch toward centre / clear back to corner ──
+      const cornerToCentre = Math.hypot(origin.x - W / 2, origin.y - H / 2) || 1;
+      const distOrigin = Math.hypot(b.x - origin.x, b.y - origin.y);
+      if (active === b.slot) {
+        if (distOrigin < CLEAR_FRAC * cornerToCentre) onFilter && onFilter("all");
+      } else if (distOrigin > LATCH_FRAC * cornerToCentre) {
+        onFilter && onFilter(b.slot);
+      }
+      // otherwise springs back (no change).
+    }
+    b.dragging = false;
+    d.ball = -1;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+  };
+
+  // ── Main engine: canvas + rAF loop. Mount-only (re-runs on reducedMotion). ──
   useEffect(() => {
     if (reducedMotion) return; // static DOM fallback renders instead
     const canvas = canvasRef.current;
@@ -193,176 +275,87 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     const offCtx = offCanvas.getContext("2d", { willReadFrequently: true });
 
     resize();
-    // Seed positions from the rest orbit.
-    const origin = originRef.current;
+    const origin0 = originRef.current;
     for (const b of ballsRef.current) {
       const p = orbitPos(b.angle, b.orbitR);
-      b.x = origin.x + p.dx;
-      b.y = origin.y + p.dy;
+      b.x = origin0.x + p.dx;
+      b.y = origin0.y + p.dy;
       b.z = p.z;
     }
-
-    // ── pointer input ──
-    let draggingBall = -1;
-    let mouseDown = false;
-    let hasMoved = false;
-    const mouse = { x: 0, y: 0 };
-    const mouseStart = { x: 0, y: 0 };
-
-    const getPos = (e) => {
-      const r = canvas.getBoundingClientRect();
-      const t = e.touches ? (e.touches[0] || e.changedTouches[0]) : e;
-      return { x: t.clientX - r.left, y: t.clientY - r.top };
-    };
-    const hitTest = (mx, my) => {
-      const balls = ballsRef.current;
-      const order = balls.map((b, i) => ({ i, z: b.z })).sort((a, b) => b.z - a.z);
-      for (const s of order) {
-        const b = balls[s.i];
-        if (Math.hypot(mx - b.x, my - b.y) < b.r + 10) return s.i;
-      }
-      return -1;
-    };
-    const flash = (color) => {
-      const el = flashRef.current;
-      if (!el) return;
-      el.style.transition = "opacity 0.08s ease-out";
-      el.style.background = `radial-gradient(circle at center, rgba(${color.r},${color.g},${color.b},0.18), transparent 70%)`;
-      el.style.opacity = "1";
-      setTimeout(() => { el.style.transition = "opacity 0.4s"; el.style.opacity = "0"; }, 60);
-    };
-
-    const onDown = (e) => {
-      const p = getPos(e);
-      const hit = hitTest(p.x, p.y);
-      if (hit < 0) return; // empty-corner gestures pass through; orbs only
-      e.preventDefault();
-      mouse.x = p.x; mouse.y = p.y;
-      mouseStart.x = p.x; mouseStart.y = p.y;
-      mouseDown = true; hasMoved = false;
-      draggingBall = hit; ballsRef.current[hit].dragging = true; canvas.style.cursor = "grabbing";
-    };
-    const onMove = (e) => {
-      if (mouseDown) e.preventDefault();
-      const p = getPos(e);
-      mouse.x = p.x; mouse.y = p.y;
-      if (mouseDown && Math.hypot(p.x - mouseStart.x, p.y - mouseStart.y) > 5) hasMoved = true;
-      if (!mouseDown) canvas.style.cursor = hitTest(p.x, p.y) >= 0 ? "grab" : "default";
-    };
-    const onUp = () => {
-      const balls = ballsRef.current;
-      const origin2 = originRef.current;
-      const { onCreate, onGrownUp, onFilter } = cbRef.current;
-      if (draggingBall >= 0) {
-        const b = balls[draggingBall];
-        const active = laneFilterRef.current;
-        if (!hasMoved) {
-          // ── TAP ──
-          if (b.role === "spark") onGrownUp && onGrownUp();
-          else if (b.slot && active === b.slot) onFilter && onFilter("all"); // tap the parked orb clears
-          else onCreate && onCreate(b.slot);
-          b.activated = 1;
-          flash(b.color);
-        } else if (b.role !== "spark" && b.slot) {
-          // ── DRAG release: latch / clear ──
-          const dist = Math.hypot(b.x - origin2.x, b.y - origin2.y);
-          if (active === b.slot) {
-            if (dist < CLEAR_RADIUS) onFilter && onFilter("all"); // dragged the active orb home
-          } else if (dist > LATCH_RADIUS) {
-            onFilter && onFilter(b.slot); // pulled out past the latch
-          }
-        }
-        // ✦ drag and short drags spring back on their own (no state change).
-        b.dragging = false;
-        draggingBall = -1;
-      }
-      mouseDown = false;
-      canvas.style.cursor = hitTest(mouse.x, mouse.y) >= 0 ? "grab" : "default";
-    };
-
-    canvas.addEventListener("mousedown", onDown);
-    canvas.addEventListener("mousemove", onMove);
-    canvas.addEventListener("mouseup", onUp);
-    canvas.addEventListener("mouseleave", onUp);
-    canvas.addEventListener("touchstart", onDown, { passive: false });
-    canvas.addEventListener("touchmove", onMove, { passive: false });
-    canvas.addEventListener("touchend", onUp, { passive: false });
 
     const onResize = () => resize();
     window.addEventListener("resize", onResize);
 
-    // ── field render (transparent compositing — orbs float over the view) ──
+    // ── field render — transparent compositing, bbox-local offscreen ──
     const renderMetaballs = () => {
-      const { W, H } = dimsRef.current;
+      const { W, H, dpr } = dimsRef.current;
       const balls = ballsRef.current;
       const N = balls.length;
-      const sw = offCanvas.width, sh = offCanvas.height;
+
+      let maxR = 0;
+      for (let i = 0; i < N; i++) if (balls[i].r > maxR) maxR = balls[i].r;
+      const pad = maxR * 1.6; // field only reaches ~1.1× radius; keep the bbox tight for sharpness
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < N; i++) {
+        const b = balls[i];
+        if (b.x < minX) minX = b.x;
+        if (b.x > maxX) maxX = b.x;
+        if (b.y < minY) minY = b.y;
+        if (b.y > maxY) maxY = b.y;
+      }
+      minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+      maxX = Math.min(W, maxX + pad); maxY = Math.min(H, maxY + pad);
+      const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+      // Render at device-pixel sharpness (scale up to dpr), but cap total pixels.
+      const scale = Math.max(0.6, Math.min(dpr, Math.sqrt(OFF_BUDGET / (bw * bh))));
+      const sw = Math.max(1, Math.floor(bw * scale)), sh = Math.max(1, Math.floor(bh * scale));
+      if (offCanvas.width !== sw) offCanvas.width = sw;
+      if (offCanvas.height !== sh) offCanvas.height = sh;
       const img = offCtx.createImageData(sw, sh);
       const d = img.data;
-      const active = laneFilterRef.current;
-      const filtering = active && active !== "all";
 
       const bd = new Array(N);
       for (let i = 0; i < N; i++) {
         const b = balls[i];
         const boost = b.activated * 0.4;
         const depthF = 1 + b.z * DEPTH_BRIGHT * 0.01;
-        // Dim the non-active lanes while a filter is parked.
-        const dim = filtering && b.slot && b.slot !== active ? 0.55 : 1;
         bd[i] = {
-          cx: b.x * RES, cy: b.y * RES,
-          r2: (b.r * RES) * (b.r * RES),
+          cx: (b.x - minX) * scale, cy: (b.y - minY) * scale,
+          r2: (b.r * scale) * (b.r * scale),
           cr: Math.min(255, (b.color.r + boost * 55) * depthF),
           cg: Math.min(255, (b.color.g + boost * 40) * depthF),
           cb: Math.min(255, (b.color.b + boost * 30) * depthF),
-          dim,
         };
       }
 
-      let maxSR = 0;
-      for (let i = 0; i < N; i++) { const sr = Math.sqrt(bd[i].r2); if (sr > maxSR) maxSR = sr; }
-      const pad = maxSR * 4.5;
-      let bxMin = Infinity, bxMax = -Infinity, byMin = Infinity, byMax = -Infinity;
-      for (let i = 0; i < N; i++) {
-        const c = bd[i];
-        if (c.cx - pad < bxMin) bxMin = c.cx - pad;
-        if (c.cx + pad > bxMax) bxMax = c.cx + pad;
-        if (c.cy - pad < byMin) byMin = c.cy - pad;
-        if (c.cy + pad > byMax) byMax = c.cy + pad;
-      }
-      const minX = Math.max(0, bxMin | 0);
-      const maxX = Math.min(sw - 1, (bxMax + 1) | 0);
-      const minY = Math.max(0, byMin | 0);
-      const maxY = Math.min(sh - 1, (byMax + 1) | 0);
-
-      const lo = THR - EDGE, hi = THR + EDGE, invRange = 1 / (hi - lo);
-
-      for (let y = minY; y <= maxY; y++) {
-        for (let x = minX; x <= maxX; x++) {
-          let field = 0, wr = 0, wg = 0, wb = 0, wDim = 0;
+      // Opaque body, anti-aliased only on the outer rim [THR-EDGE, THR]; above THR
+      // the orb is fully solid. alpha is for edge smoothing, not see-through.
+      const lo = THR - EDGE, invRange = 1 / EDGE;
+      for (let y = 0; y < sh; y++) {
+        for (let x = 0; x < sw; x++) {
+          let field = 0, wr = 0, wg = 0, wb = 0;
           for (let i = 0; i < N; i++) {
             const dx = x - bd[i].cx, dy = y - bd[i].cy;
             const c = bd[i].r2 / (dx * dx + dy * dy + 1);
             field += c;
             wr += bd[i].cr * c; wg += bd[i].cg * c; wb += bd[i].cb * c;
-            wDim += bd[i].dim * c;
           }
           if (field < lo) continue;
           let alpha;
-          if (field >= hi) alpha = 1;
+          if (field >= THR) alpha = 1;
           else { const t = (field - lo) * invRange; alpha = t * t * (3 - 2 * t); }
           const invF = 1 / field;
           const idx = (y * sw + x) * 4;
           d[idx] = (wr * invF) | 0;
           d[idx + 1] = (wg * invF) | 0;
           d[idx + 2] = (wb * invF) | 0;
-          d[idx + 3] = (alpha * (wDim * invF) * 255) | 0; // true alpha → floats over content
+          d[idx + 3] = (alpha * 255) | 0;
         }
       }
       offCtx.putImageData(img, 0, 0);
       ctx2d.imageSmoothingEnabled = true;
       ctx2d.imageSmoothingQuality = "high";
-      ctx2d.drawImage(offCanvas, 0, 0, sw, sh, 0, 0, W, H);
+      ctx2d.drawImage(offCanvas, 0, 0, sw, sh, minX, minY, bw, bh);
     };
 
     const drawGlow = () => {
@@ -382,15 +375,27 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     const drawLabels = (order) => {
       const balls = ballsRef.current;
       const caches = labelCachesRef.current;
-      const active = laneFilterRef.current;
-      const filtering = active && active !== "all";
-      for (const idx of order) {
+      // Front-most first: a front label "wins", and any back label it would touch
+      // is hidden (with a short fade band) so text never collides.
+      const front = order.slice().reverse();
+      const placed = [];
+      const FADE = 12; // px of clear separation needed for a label to fully show
+      for (const idx of front) {
         const b = balls[idx];
         const cache = caches[idx];
         if (!cache) continue;
+        const tw = cache.w - 8, th = cache.h - 6; // visible text extent
+        let vis = 1;
+        for (const q of placed) {
+          const reqX = (tw + q.tw) / 2;
+          const reqY = (th + q.th) / 2;
+          // separation beyond the boxes touching (negative ⇒ overlapping)
+          const sep = Math.max(Math.abs(b.x - q.x) - reqX, Math.abs(b.y - q.y) - reqY);
+          vis = Math.min(vis, Math.max(0, Math.min(1, sep / FADE)));
+        }
         const depthAlpha = 0.72 + 0.28 * Math.max(0, Math.min(1, (b.z + 60) / 120));
-        const dim = filtering && b.slot && b.slot !== active ? 0.5 : 1;
-        const baseAlpha = (0.85 + b.activated * 0.15) * depthAlpha * dim;
+        const baseAlpha = (0.85 + b.activated * 0.15) * depthAlpha * vis;
+        if (baseAlpha < 0.05) continue; // hidden by an overlapping front label
         ctx2d.save();
         ctx2d.globalAlpha = baseAlpha;
         if (b.role === "spark") {
@@ -398,9 +403,10 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
           ctx2d.rotate(b.spinAngle || 0);
           ctx2d.drawImage(cache.canvas, -cache.w / 2, -cache.h / 2, cache.w, cache.h);
         } else {
-          ctx2d.drawImage(cache.canvas, b.x - cache.w / 2, b.y - cache.h / 2, cache.w, cache.h);
+          ctx2d.drawImage(cache.canvas, Math.round(b.x - cache.w / 2), Math.round(b.y - cache.h / 2), cache.w, cache.h);
         }
         ctx2d.restore();
+        placed.push({ x: b.x, y: b.y, tw, th });
       }
     };
 
@@ -413,7 +419,7 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
 
     const step = (now) => {
       const halted = pausedRef.current || docHiddenRef.current || offscreenRef.current;
-      if (halted) { rafRef.current = 0; return; } // resumed by the effect below
+      if (halted) { rafRef.current = 0; return; } // resumed by the effects below
       const dt = Math.min((now - lastT) / 1000, 0.05);
       lastT = now;
       time += dt;
@@ -422,15 +428,18 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
       const N = balls.length;
       const origin = originRef.current;
       const park = parkRef.current;
+      const mouse = mouseRef.current;
+      const { W, H } = dimsRef.current;
       const active = laneFilterRef.current;
+      const cornerToCentre = Math.hypot(origin.x - W / 2, origin.y - H / 2) || 1;
 
       // breathing — layered sines (scaled amplitudes)
       for (let i = 0; i < N; i++) {
         const b = balls[i];
-        const osc1 = Math.sin(time * 0.18 + b.phaseOffset) * 6;
-        const osc2 = Math.sin(time * 0.065 + b.phaseOffset * 1.7) * 12;
-        const osc3 = Math.sin(time * 0.03 + b.phaseOffset * 0.6) * 8;
-        b.orbitR = Math.max(8, b.baseOrbitR + osc1 + osc2 + osc3);
+        const osc1 = Math.sin(time * 0.18 + b.phaseOffset) * 5;
+        const osc2 = Math.sin(time * 0.065 + b.phaseOffset * 1.7) * 9;
+        const osc3 = Math.sin(time * 0.03 + b.phaseOffset * 0.6) * 6;
+        b.orbitR = Math.max(16, b.baseOrbitR + osc1 + osc2 + osc3); // floor keeps them from collapsing into one blob
       }
 
       // speed burst
@@ -463,12 +472,19 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
         if (parked && !b.dragging) b.activated = Math.max(b.activated, 0.6); // steady active glow
 
         if (b.dragging) {
-          b.x += (mouse.x - b.x) * 12 * dt;
-          b.y += (mouse.y - b.y) * 12 * dt;
+          // Anchor the finger at the orb's bottom-right so the body stays visible
+          // up-left of the thumb.
+          const off = b.baseR * DRAG_ANCHOR;
+          b.x += (mouse.x - off - b.x) * 14 * dt;
+          b.y += (mouse.y - off - b.y) * 14 * dt;
           b.z = 0;
           b.angle = Math.atan2(-(b.y - origin.y) / sinTilt, b.x - origin.x);
+          // arm feedback: a lane orb dragged past the latch glows to signal it'll filter
+          if (b.slot && Math.hypot(b.x - origin.x, b.y - origin.y) > LATCH_FRAC * cornerToCentre) {
+            b.activated = Math.max(b.activated, 0.85);
+          }
         } else if (parked) {
-          // The active-filter orb parks out of the cluster as the indicator.
+          // active-filter orb parks above the cluster as the indicator.
           b.x += (park.x - b.x) * 6 * dt;
           b.y += (park.y - b.y) * 6 * dt;
           b.z = 0;
@@ -517,7 +533,6 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
       sparkle.spinAngle = (sparkle.spinAngle || 0) + proximity * 2.2 * dt;
 
       const order = balls.map((_, i) => i).sort((a, b) => balls[a].z - balls[b].z);
-      const { W, H } = dimsRef.current;
       ctx2d.clearRect(0, 0, W, H);
       drawGlow();
       renderMetaballs();
@@ -526,7 +541,6 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
       rafRef.current = requestAnimationFrame(step);
     };
 
-    // expose a starter the resume effect can call
     startLoopRef.current = () => {
       if (rafRef.current) return;
       lastT = performance.now();
@@ -538,13 +552,6 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
       startLoopRef.current = null;
-      canvas.removeEventListener("mousedown", onDown);
-      canvas.removeEventListener("mousemove", onMove);
-      canvas.removeEventListener("mouseup", onUp);
-      canvas.removeEventListener("mouseleave", onUp);
-      canvas.removeEventListener("touchstart", onDown);
-      canvas.removeEventListener("touchmove", onMove);
-      canvas.removeEventListener("touchend", onUp);
       window.removeEventListener("resize", onResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -618,7 +625,7 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     );
   }
 
-  // ── Animated path: the canvas + a visually-hidden DOM control layer ──
+  // ── Animated path: a full-stage render canvas + a corner pointer-catch region ──
   const viewer = ctx?.viewerSlot || SLOTS.A;
   const other = viewer === SLOTS.A ? SLOTS.B : SLOTS.A;
   const srOnly = { position: "absolute", width: 1, height: 1, margin: -1, padding: 0, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 };
@@ -627,24 +634,31 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
       ref={wrapRef}
       style={{
         position: "absolute",
-        right: 6,
-        bottom: 6,
-        width: DOCK_W,
-        height: DOCK_H,
+        inset: 0,
         zIndex: 7,
-        pointerEvents: "none",
-        // While an overlay (drawer / capture sheet) is open the dock pauses; hide
-        // it so it doesn't float above the scrim (scrim z5 < orbit z7).
+        pointerEvents: "none", // canvas never blocks the views
         opacity: paused ? 0 : 1,
         transition: "opacity 200ms ease",
       }}
     >
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        style={{ width: "100%", height: "100%", display: "block", touchAction: "none", pointerEvents: paused ? "none" : "auto" }}
+      <canvas ref={canvasRef} aria-hidden="true" style={{ width: "100%", height: "100%", display: "block" }} />
+      {/* Corner pointer-catch region (initiates taps/drags; pointer-capture then
+          tracks the drag across the whole stage). */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{
+          position: "absolute",
+          right: 0,
+          bottom: 0,
+          width: HIT_W,
+          height: HIT_H,
+          touchAction: "none",
+          pointerEvents: paused ? "none" : "auto",
+        }}
       />
-      <div ref={flashRef} aria-hidden="true" style={{ position: "absolute", inset: 0, opacity: 0, pointerEvents: "none" }} />
       {/* Real controls for assistive tech (canvas is aria-hidden). */}
       <div style={srOnly}>
         <button onClick={() => onCreate && onCreate(viewer)}>Add to {laneLabel(viewer, viewer, ctx?.space)}</button>

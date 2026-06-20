@@ -158,12 +158,12 @@ export default function TwoDoShell() {
         borderRight: isDesktop ? `1px solid ${COLORS.surfaceLight}` : "none",
       }}
     >
-      {/* Stage — header + content + lane filter + input bar. Pushes left by the
-          drawer's full width when it opens, so the two move as one (see DRAWER_W).
+      {/* Stage — header + content. The drawer overlays on top (it slides in over
+          the content); the stage itself does NOT move, so the background content
+          and header buttons stay put when the drawer opens.
           flex:1 + minHeight:0 + overflow:hidden keep ALL scrolling inside the
           content area below — otherwise a view's scrollIntoView (DatesView's
-          month/day jump) scrolls the whole shell and the header vanishes.
-          No "motion" class: the push is an explicit slide the user asked for. */}
+          month/day jump) scrolls the whole shell and the header vanishes. */}
       <div
         style={{
           flex: 1,
@@ -171,9 +171,6 @@ export default function TwoDoShell() {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          transform: navOpen ? `translateX(-${DRAWER_W}px)` : "translateX(0)",
-          transition: DRAWER_TX,
-          willChange: "transform",
         }}
       >
       {/* Header — brand left, menu button right */}
@@ -351,13 +348,21 @@ export default function TwoDoShell() {
       </nav>
 
       {/* Grown-Up capture sheet — summoned by the ✦ orb. Scrim z8 (above the
-          orbit dock at z7) + the sheet sliding up from the bottom. */}
-      {captureOpen && (
-        <div
-          onClick={() => setCaptureOpen(false)}
-          style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 8 }}
-        />
-      )}
+          orbit dock at z7) + the sheet sliding up from the bottom. The scrim
+          fades (rather than popping) and the sheet uses the same gentle ease as
+          the nav drawer, so the transition isn't harsh. */}
+      <div
+        onClick={() => setCaptureOpen(false)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(0,0,0,0.35)",
+          zIndex: 8,
+          opacity: captureOpen ? 1 : 0,
+          pointerEvents: captureOpen ? "auto" : "none",
+          transition: `opacity ${DRAWER_MS}ms ${DRAWER_EASE}`,
+        }}
+      />
       <div
         style={{
           position: "absolute",
@@ -366,7 +371,7 @@ export default function TwoDoShell() {
           bottom: 0,
           zIndex: 8,
           transform: captureOpen ? "translateY(0)" : "translateY(110%)",
-          transition: "transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+          transition: `transform ${DRAWER_MS}ms ${DRAWER_EASE}`,
           background: COLORS.bg,
           borderTop: `1px solid ${COLORS.surfaceLight}`,
           borderRadius: "18px 18px 0 0",
