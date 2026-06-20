@@ -216,15 +216,21 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     if (hit < 0) return; // empty corner → let the gesture pass through
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
     mouseRef.current = p;
-    dragRef.current = { ball: hit, hasMoved: false, startX: p.x, startY: p.y };
+    dragRef.current = { ball: hit, hasMoved: false, startX: p.x, startY: p.y, offEdge: false };
     ballsRef.current[hit].dragging = true;
   };
+  // Edge zone for the "fling off-screen → clear filter" gesture. Generous, and
+  // tracked during the whole drag, because on touch the finger can't actually
+  // leave the viewport (and a release at the very edge often isn't precise).
+  const OFF_EDGE = 44;
   const onPointerMove = (e) => {
     const d = dragRef.current;
     if (d.ball < 0) return;
     const p = getPos(e);
     mouseRef.current = p;
     if (Math.hypot(p.x - d.startX, p.y - d.startY) > 5) d.hasMoved = true;
+    // Approaching the left/top edge (away from the dock) arms the off-screen reset.
+    if (p.x < OFF_EDGE || p.y < OFF_EDGE) d.offEdge = true;
   };
   const onPointerUp = (e) => {
     const d = dragRef.current;
@@ -236,9 +242,9 @@ export default function OrbitDock({ ctx, laneFilter = "all", onCreate, onGrownUp
     const { onCreate, onGrownUp, onFilter } = cbRef.current;
     const active = laneFilterRef.current;
     const p = getPos(e);
-    const EDGE = 12;
-    // Flung off the screen (left/top edge, or beyond any edge) → clear the filter.
-    const offscreen = p.x < EDGE || p.y < EDGE || p.x > W + 4 || p.y > H + 4;
+    // Off-screen if the drag reached the left/top edge zone at any point (sticky,
+    // for touch) or the pointer ended beyond any edge (desktop).
+    const offscreen = d.offEdge || p.x < OFF_EDGE || p.y < OFF_EDGE || p.x > W + 4 || p.y > H + 4;
     if (!d.hasMoved) {
       // ── TAP ──
       if (b.role === "spark") onGrownUp && onGrownUp();
