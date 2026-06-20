@@ -35,7 +35,7 @@ When docs disagree, resolve it like this:
 | `two-do-buttons-bottom.md` | Proposed — bottom rework: a canvas **metaball orbit** of four orbs (Me/You/Us/Grown-Up); tap = create-in-lane, drag-out = filter-to-lane; removes the lane chips + input bar entirely. Reference prototype in `plans/prototypes/` | Proposed — not yet built |
 | `two-do-shell-audit.md` | Audit of both shell-chrome docs vs. the live shell + build notes for the nav drawer | Current — audit |
 | `plans/two-do-dates-day-week-refinements.md` | Dates view: Week gained the Day header + a selectable week-start day strip (Monday default), timeline blocks gained height-scaled padding, the now-line is quieted + layered under entries; plus the app-wide implicit-scroll (no scrollbars) change | **Built** 2026-06-19 |
-| `plans/two-do-grown-up-claude-api.md` | The Grown-Up parser × Claude API: harden (structured outputs, ISO dates, timeout) → context-aware routing → clarifying chat; Sonnet 4.6 default, Haiku later; why no MCP server (yet) | **Phase 1 built** 2026-06-19; Phases 2–3 proposed |
+| `plans/two-do-grown-up-claude-api.md` | The Grown-Up parser × Claude API: harden (structured outputs, ISO dates, timeout) → context-aware routing → clarifying chat; Sonnet 4.6 default, Haiku later; why no MCP server (yet) | **Phases 1–2 built** 2026-06-19; Phase 3 proposed |
 | `two-do-shell.jsx` | Running React prototype of the app shell | **Current — visual/behavioural source of truth** |
 
 ---

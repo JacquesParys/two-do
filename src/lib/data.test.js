@@ -1,6 +1,6 @@
 // Field-driven taxonomy contract (runs in mock mode — no Supabase env in tests).
 import { describe, it, expect } from "vitest";
-import { listCards, listCalendar, listListItems, getSubtaskProgress } from "./data.js";
+import { listCards, listCalendar, listListItems, getSubtaskProgress, listLists, findOrCreateList, getParserContext } from "./data.js";
 
 describe("field-driven views", () => {
   it("board = items with a column_id, never children", async () => {
@@ -40,5 +40,33 @@ describe("getSubtaskProgress", () => {
 
   it("returns {} for no parents", async () => {
     expect(await getSubtaskProgress([])).toEqual({});
+  });
+});
+
+describe("Grown-Up filing helpers", () => {
+  it("findOrCreateList matches an existing list case-insensitively", async () => {
+    const lists = await listLists();
+    expect(lists.length).toBeGreaterThan(0);
+    const existing = lists[0];
+    const hit = await findOrCreateList("space1", existing.name.toUpperCase());
+    expect(hit.id).toBe(existing.id); // same list, not a duplicate
+  });
+
+  it("findOrCreateList creates a new list then reuses it (idempotent)", async () => {
+    const novel = "Zzz Parser Test List 9914";
+    const a = await findOrCreateList("space1", novel);
+    expect(a.id).toBeTruthy();
+    expect(a.name).toBe(novel);
+    const b = await findOrCreateList("space1", novel.toLowerCase());
+    expect(b.id).toBe(a.id); // found, not re-created
+  });
+
+  it("getParserContext returns lists/columns/stores name snapshots", async () => {
+    const ctx = await getParserContext();
+    expect(Array.isArray(ctx.lists)).toBe(true);
+    expect(Array.isArray(ctx.columns)).toBe(true);
+    expect(Array.isArray(ctx.stores)).toBe(true);
+    expect(ctx.lists.every((l) => typeof l.name === "string")).toBe(true);
+    expect(ctx.columns.every((c) => typeof c.name === "string")).toBe(true);
   });
 });

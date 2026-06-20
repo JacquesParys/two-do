@@ -2,7 +2,7 @@
 
 *Build plan for taking "The Grown-Up" brain-dump parser from a crude one-shot Claude call to a hardened, context-aware, clarifying capture pipeline. Phased: harden → context-aware → clarifying chat. Default model Sonnet 4.6 now, Haiku 4.5 once tuned.*
 
-> Status: **Phase 1 built** 2026-06-19; Phases 2–3 proposed. Approved direction (Jacques, 2026-06-19): "all of the above… small MCP server of functions perhaps?" + "start with Sonnet, pull back to Haiku when ready." The behavioural source of truth for the parser is `src/lib/parser.js` + `supabase/functions/parse/index.ts`.
+> Status: **Phases 1–2 built** 2026-06-19; Phase 3 proposed. Approved direction (Jacques, 2026-06-19): "all of the above… small MCP server of functions perhaps?" + "start with Sonnet, pull back to Haiku when ready." The behavioural source of truth for the parser is `src/lib/parser.js` + `supabase/functions/parse/index.ts`.
 
 ---
 
@@ -78,7 +78,9 @@ The HTTP contract stays the front door (the home-lab service can implement it un
 
 ---
 
-## 5. Phase 2 — Context-aware routing
+## 5. Phase 2 — Context-aware routing — ✅ BUILT 2026-06-19
+
+> Shipped: `getParserContext()` + `findOrCreateList()` in `src/lib/data.js`; the client sends `context:{ lists, columns, stores }` (`parser.js`); the edge function renders a `CONTEXT:` block and is told to reuse existing list/store names; `ReviewTray` loads the context before parsing and resolves a shopping draft's `listName`→`list_id` on accept (closing the drop). Tests: `findOrCreateList` match/create-idempotent + `getParserContext` shape (55/55 green).
 
 Extend the contract additively: request gains `context: { now, tz, lists:[{name}], columns:[{name, role}], stores:[name] }`.
 

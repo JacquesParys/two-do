@@ -9,7 +9,8 @@
 //   - unset                → local heuristic stub (no AI), so the app still works.
 //
 // Remote contract:
-//   POST { text, viewerSlot }  →  { drafts: Draft[] }
+//   POST { text, viewerSlot, now?, tz?, context? }  →  { drafts: Draft[] }
+//   context = { lists:[{name}], columns:[{name,role}], stores:[name] } (optional)
 //   Draft = { type, title, lane, kind, emoji?, due_at?, listName?, amount?, persistent? }
 //   - type:  "task" | "event" | "shopping" | "expense"
 //   - lane:  "partner_a" | "partner_b" | "shared"   (NOT Me/You/Us)
@@ -54,8 +55,15 @@ export async function remoteParse(text, ctx = {}) {
     res = await fetch(parserUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // now + tz let the backend resolve "saturday" -> a real ISO datetime.
-      body: JSON.stringify({ text, viewerSlot: ctx.viewerSlot || SLOTS.A, now: nowIso(), tz: localTz() }),
+      // now + tz let the backend resolve "saturday" -> a real ISO datetime;
+      // context (lists/columns/stores) lets it route into what already exists.
+      body: JSON.stringify({
+        text,
+        viewerSlot: ctx.viewerSlot || SLOTS.A,
+        now: nowIso(),
+        tz: localTz(),
+        context: ctx.parserContext || undefined,
+      }),
       signal: ctrl ? ctrl.signal : undefined,
     });
   } finally {

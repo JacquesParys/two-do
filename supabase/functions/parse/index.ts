@@ -73,6 +73,7 @@ Rules:
 - kind "exciting" + an emoji for fun stuff (date night 💕, trips/markets ✈️, birthdays 🎂, gigs 🎸).
 - Currency is dollars in this app; convert "40 quid" -> amount 40.
 - Dates: resolve relative phrases ("saturday", "tomorrow", "the 14th", "before thursday") against the provided now + tz, and output an absolute ISO-8601 datetime in that timezone. If a clock time is given, use it; otherwise default to 09:00 local that day. If no date is mentioned, due_at is null.
+- If a CONTEXT block lists existing lists or stores, reuse an exact or near match for listName (e.g. an existing "Groceries") instead of inventing a new name; only propose a new list name when nothing fits.
 - Capture reminders to cancel/booking deadlines as tasks with due_at and persistent where implied.
 - Drop pure filler ("ok so", "oh").`;
 
@@ -81,7 +82,13 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!API_KEY) return json({ error: "ANTHROPIC_API_KEY not set" }, 500);
 
-  let body: { text?: string; viewerSlot?: string; now?: string; tz?: string };
+  let body: {
+    text?: string;
+    viewerSlot?: string;
+    now?: string;
+    tz?: string;
+    context?: { lists?: { name: string }[]; columns?: { name: string; role?: string }[]; stores?: string[] };
+  };
   try {
     body = await req.json();
   } catch {
@@ -94,7 +101,7 @@ Deno.serve(async (req: Request) => {
   const now = body.now || new Date().toISOString();
   const tz = body.tz || "UTC";
 
-  const userContent = `now=${now} tz=${tz}\nviewerSlot=${viewerSlot}\n\nDUMP:\n${text}`;
+  const userContent = `now=${now} tz=${tz}\nviewerSlot=${viewerSlot}${contextBlock(body.context)}\n\nDUMP:\n${text}`;
 
   let res: Response;
   try {
@@ -130,6 +137,22 @@ Deno.serve(async (req: Request) => {
     return json({ error: "model returned non-JSON", detail: String(raw).slice(0, 500) }, 502);
   }
 });
+
+// Render the optional client-supplied context (existing lists / columns / stores)
+// into a compact prompt block so the model reuses what already exists.
+function contextBlock(ctx?: {
+  lists?: { name: string }[];
+  columns?: { name: string; role?: string }[];
+  stores?: string[];
+}): string {
+  if (!ctx) return "";
+  const lines: string[] = [];
+  if (ctx.lists?.length) lines.push(`Existing lists: ${ctx.lists.map((l) => l.name).join(", ")}`);
+  if (ctx.columns?.length)
+    lines.push(`Board columns: ${ctx.columns.map((c) => (c.role && c.role !== "none" ? `${c.name}(${c.role})` : c.name)).join(", ")}`);
+  if (ctx.stores?.length) lines.push(`Known stores: ${ctx.stores.join(", ")}`);
+  return lines.length ? `\n\nCONTEXT:\n${lines.join("\n")}` : "";
+}
 
 function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), {

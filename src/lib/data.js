@@ -342,6 +342,29 @@ export async function createList(list) {
   return data;
 }
 
+/** Resolve a list name to a standing list (case-insensitive), creating it if new.
+ *  Used when filing a shopping draft that named a list (e.g. "Groceries"). */
+export async function findOrCreateList(space_id, name) {
+  const wanted = String(name || "").trim();
+  if (!wanted) return null;
+  const lists = await listLists();
+  const hit = (lists || []).find((l) => (l.name || "").trim().toLowerCase() === wanted.toLowerCase());
+  if (hit) return hit;
+  return createList({ space_id, name: wanted });
+}
+
+/** Compact snapshot of the space's lists / columns / stores, for the Grown-Up
+ *  parser to route drafts into what already exists (instead of inventing names).
+ *  Shaped to be cheap to send and to mirror a future capability/MCP surface. */
+export async function getParserContext() {
+  const [lists, columns, stores] = await Promise.all([listLists(), listColumns(), listStores()]);
+  return {
+    lists: (lists || []).map((l) => ({ name: l.name })).filter((l) => l.name),
+    columns: (columns || []).map((c) => ({ name: c.name, role: c.role })).filter((c) => c.name),
+    stores: (stores || []).map((s) => s.name).filter(Boolean),
+  };
+}
+
 // --- Kanban column management ------------------------------------------------
 export async function createColumn(col) {
   if (isMockMode) {

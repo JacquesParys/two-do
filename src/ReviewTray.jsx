@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { COLORS, excitingStyle } from "./theme";
 import { parseBrainDump, TYPE_LABEL } from "./lib/parser.js";
 import { laneLabel, laneColor } from "./lib/lanes.js";
-import { createItem } from "./lib/data.js";
+import { createItem, getParserContext, findOrCreateList } from "./lib/data.js";
 
 // Full-screen confirm-before-file tray. Parses the dump, shows editable-ish
 // draft cards, and only writes what you accept.
@@ -12,9 +12,14 @@ export default function ReviewTray({ text, ctx, onClose, onFiled }) {
 
   useEffect(() => {
     let alive = true;
-    parseBrainDump(text, ctx || {}).then((d) => {
+    (async () => {
+      // Give the parser the space's lists/columns/stores so it routes into what
+      // already exists. Best-effort — parse still runs if this fails.
+      let parserContext;
+      try { parserContext = await getParserContext(); } catch { /* no-context */ }
+      const d = await parseBrainDump(text, { ...(ctx || {}), parserContext });
       if (alive) setDrafts(d.map((x, i) => ({ ...x, _id: `d${i}`, status: "pending" })));
-    });
+    })();
     return () => {
       alive = false;
     };
@@ -23,6 +28,12 @@ export default function ReviewTray({ text, ctx, onClose, onFiled }) {
   const pending = (drafts || []).filter((d) => d.status === "pending");
 
   async function accept(draft) {
+    // A shopping draft that named a list files into it (creating it if new),
+    // so it lands in Lists instead of vanishing — closes the old listName drop.
+    let list_id = null;
+    if (draft.type === "shopping" && draft.listName && ctx?.space?.id) {
+      try { list_id = (await findOrCreateList(ctx.space.id, draft.listName))?.id ?? null; } catch { /* skip */ }
+    }
     await createItem({
       space_id: ctx?.space?.id,
       type: draft.type,
@@ -32,6 +43,7 @@ export default function ReviewTray({ text, ctx, onClose, onFiled }) {
       emoji: draft.emoji || null,
       due_at: draft.due_at || null,
       amount: draft.amount ?? null,
+      list_id,
       persistent_until_done: draft.persistent || false,
       created_by: ctx?.people?.[ctx.viewerSlot]?.id ?? null,
     });
