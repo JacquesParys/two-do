@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metaball Orbit Buttons</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c22; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hint {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    font: 11px/1.4 system-ui, -apple-system, sans-serif;
+    color: rgba(255,255,255,0.25); text-align: center;
+    pointer-events: none; transition: opacity 0.8s; white-space: nowrap;
+  }
+  #flash {
+    position: fixed; inset: 0; pointer-events: none;
+    opacity: 0; transition: opacity 0.08s ease-out;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="flash"></div>
+<div id="hint">click space → set origin · hold bg → drag origin · drag button → pull · click button → activate</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const flashEl = document.getElementById('flash');
+const hintEl = document.getElementById('hint');
+
+let W, H, dpr;
+const offCanvas = document.createElement('canvas');
+const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
+const RES = 0.35;  // lower res for 4 balls — bilinear upscale smooths it
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth;
+  H = canvas.clientHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  offCanvas.width = Math.floor(W * RES);
+  offCanvas.height = Math.floor(H * RES);
+}
+
+// Palette
+const COL_CORAL  = { r: 238, g: 165, b: 140 };  // lighter coral for 'Us'
+const COL_SPARK  = { r: 248, g: 240, b: 235 };   // near-white warm tint for sparkle
+const COL_BLUE   = { r: 90,  g: 145, b: 220 };
+const COL_PURPLE = { r: 168, g: 105, b: 215 };
+const BG_R = 26, BG_G = 28, BG_B = 34;
+const BG = '#1a1c22';
+const FONT = "'Fraunces', Georgia, serif";
+
+// 3D orbit
+const TILT = Math.PI * 0.38;
+const cosTilt = Math.cos(TILT);
+const sinTilt = Math.sin(TILT);
+const DEPTH_SCALE = 0.0025;
+const DEPTH_BRIGHT = 0.10;
+
+// 4 balls — staggered angles, different base orbit radii
+const N = 4;
+const origin = { x: 0, y: 0 };
+const balls = [
+  { angle: 0,              baseOrbitR: 88,  orbitR: 88,  speed: 0.40, baseSpeed: 0.40, baseR: 48, r: 48, color: COL_CORAL,  label: 'Us',  fSize: 22, fontW: '600', x: 0, y: 0, z: 0, dragging: false, activated: 0, phaseOffset: 0 },
+  { angle: Math.PI * 0.55, baseOrbitR: 102, orbitR: 102, speed: 0.38, baseSpeed: 0.38, baseR: 36, r: 36, color: COL_SPARK,  label: '✦',  fSize: 22, fontW: '600', x: 0, y: 0, z: 0, dragging: false, activated: 0, phaseOffset: 1.3, spinAngle: 0 },
+  { angle: Math.PI,         baseOrbitR: 95,  orbitR: 95,  speed: 0.42, baseSpeed: 0.42, baseR: 44, r: 44, color: COL_BLUE,   label: 'Me',  fSize: 22, fontW: '600', x: 0, y: 0, z: 0, dragging: false, activated: 0, phaseOffset: 2.7 },
+  { angle: Math.PI * 1.5,   baseOrbitR: 110, orbitR: 110, speed: 0.36, baseSpeed: 0.36, baseR: 40, r: 40, color: COL_PURPLE, label: 'You', fSize: 20, fontW: '600', x: 0, y: 0, z: 0, dragging: false, activated: 0, phaseOffset: 4.1 },
+];
+
+// Speed burst state — one ball speeds up occasionally
+let burstBall = -1;
+let burstTimer = 3 + Math.random() * 5;  // seconds until next burst
+let burstDuration = 0;
+const BURST_MULT = 2.8;
+
+let draggingBall = -1;
+let draggingOrigin = false;
+let mouseDown = false;
+let mouse = { x: 0, y: 0 };
+let mouseStart = { x: 0, y: 0 };
+let hasMoved = false;
+let time = 0;
+let hintAlpha = 1;
+
+// ── helpers ──
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? (e.touches[0] || e.changedTouches[0]) : e;
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+function hitTest(mx, my) {
+  const sorted = balls.map((b, i) => ({ i, z: b.z })).sort((a, b) => b.z - a.z);
+  for (const s of sorted) {
+    const b = balls[s.i];
+    if (Math.hypot(mx - b.x, my - b.y) < b.r + 10) return s.i;
+  }
+  return -1;
+}
+function flashScreen(col) {
+  flashEl.style.background = `rgba(${col.r},${col.g},${col.b},0.12)`;
+  flashEl.style.opacity = 1;
+  setTimeout(() => { flashEl.style.transition = 'opacity 0.35s'; flashEl.style.opacity = 0; }, 50);
+  setTimeout(() => { flashEl.style.transition = 'opacity 0.08s ease-out'; }, 400);
+}
+
+// ── input ──
+function onDown(e) {
+  e.preventDefault();
+  const p = getPos(e);
+  mouse = p; mouseStart = { ...p }; mouseDown = true; hasMoved = false;
+  if (hintAlpha > 0) hintAlpha = -1;
+  const hit = hitTest(p.x, p.y);
+  if (hit >= 0) {
+    draggingBall = hit;
+    balls[hit].dragging = true;
+    canvas.style.cursor = 'grabbing';
+  } else {
+    draggingOrigin = true;
+    canvas.style.cursor = 'move';
+  }
+}
+function onMove(e) {
+  e.preventDefault();
+  const p = getPos(e);
+  mouse = p;
+  if (mouseDown && Math.hypot(p.x - mouseStart.x, p.y - mouseStart.y) > 5) hasMoved = true;
+  if (draggingOrigin && mouseDown) { origin.x = p.x; origin.y = p.y; }
+  if (!mouseDown) canvas.style.cursor = hitTest(p.x, p.y) >= 0 ? 'grab' : 'default';
+}
+function onUp(e) {
+  e.preventDefault();
+  if (draggingBall >= 0) {
+    if (!hasMoved) { balls[draggingBall].activated = 1; flashScreen(balls[draggingBall].color); }
+    balls[draggingBall].dragging = false;
+    draggingBall = -1;
+  } else if (draggingOrigin && !hasMoved) {
+    const p = getPos(e);
+    origin.x = p.x; origin.y = p.y;
+  }
+  draggingOrigin = false; mouseDown = false;
+  canvas.style.cursor = hitTest(mouse.x, mouse.y) >= 0 ? 'grab' : 'default';
+}
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onUp, { passive: false });
+
+// ── 3D orbit projection ──
+function orbitPos(angle, R) {
+  const ox = Math.cos(angle) * R;
+  const oz = Math.sin(angle) * R;
+  return { dx: ox, dy: -oz * sinTilt, z: oz * cosTilt };
+}
+
+// ── drawing ──
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+  ctx.lineWidth = 1;
+  const sp = 48;
+  for (let x = sp; x < W; x += sp) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = sp; y < H; y += sp) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+}
+
+function drawOriginMark() {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 5]);
+  // draw orbit path for each ball's current radius
+  for (const b of balls) {
+    ctx.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      const p = orbitPos(a, b.orbitR);
+      if (i === 0) ctx.moveTo(origin.x + p.dx, origin.y + p.dy);
+      else ctx.lineTo(origin.x + p.dx, origin.y + p.dy);
+    }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(origin.x - 7, origin.y); ctx.lineTo(origin.x + 7, origin.y);
+  ctx.moveTo(origin.x, origin.y - 7); ctx.lineTo(origin.x, origin.y + 7);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── IMPLICIT FIELD METABALLS ──
+function renderMetaballs() {
+  const sw = offCanvas.width;
+  const sh = offCanvas.height;
+  const img = offCtx.createImageData(sw, sh);
+  const d = img.data;
+
+  // Precompute per-ball data in offscreen coords
+  const bd = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const b = balls[i];
+    const boost = b.activated * 0.4;
+    const depthF = 1 + b.z * DEPTH_BRIGHT * 0.01;
+    bd[i] = {
+      cx: b.x * RES,
+      cy: b.y * RES,
+      r2: (b.r * RES) * (b.r * RES),
+      cr: Math.min(255, (b.color.r + boost * 55) * depthF),
+      cg: Math.min(255, (b.color.g + boost * 40) * depthF),
+      cb: Math.min(255, (b.color.b + boost * 30) * depthF),
+    };
+  }
+
+  // Bounding box across all balls
+  let maxSR = 0;
+  for (let i = 0; i < N; i++) { const sr = Math.sqrt(bd[i].r2); if (sr > maxSR) maxSR = sr; }
+  const pad = maxSR * 4.5;
+  let bxMin = Infinity, bxMax = -Infinity, byMin = Infinity, byMax = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const c = bd[i];
+    if (c.cx - pad < bxMin) bxMin = c.cx - pad;
+    if (c.cx + pad > bxMax) bxMax = c.cx + pad;
+    if (c.cy - pad < byMin) byMin = c.cy - pad;
+    if (c.cy + pad > byMax) byMax = c.cy + pad;
+  }
+  const minX = Math.max(0, bxMin | 0);
+  const maxX = Math.min(sw - 1, (bxMax + 1) | 0);
+  const minY = Math.max(0, byMin | 0);
+  const maxY = Math.min(sh - 1, (byMax + 1) | 0);
+
+  const THR = 1.0;
+  const EDGE = 0.15;
+  const lo = THR - EDGE, hi = THR + EDGE, invRange = 1 / (hi - lo);
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      let field = 0;
+      let wr = 0, wg = 0, wb = 0;
+
+      for (let i = 0; i < N; i++) {
+        const dx = x - bd[i].cx, dy = y - bd[i].cy;
+        const c = bd[i].r2 / (dx * dx + dy * dy + 1);
+        field += c;
+        // accumulate weighted color inline to avoid second pass
+        wr += bd[i].cr * c;
+        wg += bd[i].cg * c;
+        wb += bd[i].cb * c;
+      }
+
+      if (field < lo) continue;
+
+      let alpha;
+      if (field >= hi) { alpha = 1; }
+      else { const t = (field - lo) * invRange; alpha = t * t * (3 - 2 * t); }
+
+      const invF = 1 / field;
+      const pr = wr * invF, pg = wg * invF, pb = wb * invF;
+
+      const idx = (y * sw + x) * 4;
+      d[idx]     = (pr * alpha + BG_R * (1 - alpha)) | 0;
+      d[idx + 1] = (pg * alpha + BG_G * (1 - alpha)) | 0;
+      d[idx + 2] = (pb * alpha + BG_B * (1 - alpha)) | 0;
+      d[idx + 3] = 255;
+    }
+  }
+
+  offCtx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(offCanvas, 0, 0, sw, sh, 0, 0, W, H);
+}
+
+function drawGlow() {
+  for (const b of balls) {
+    if (b.activated < 0.01) continue;
+    const grad = ctx.createRadialGradient(b.x, b.y, b.r * 0.3, b.x, b.y, b.r * 3);
+    grad.addColorStop(0, `rgba(${b.color.r},${b.color.g},${b.color.b},${b.activated * 0.25})`);
+    grad.addColorStop(1, `rgba(${b.color.r},${b.color.g},${b.color.b},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawShadows(drawOrder) {
+  for (const idx of drawOrder) {
+    const b = balls[idx];
+    const shadowDepth = Math.max(0, -b.z) * 0.014;
+    if (shadowDepth < 0.01) continue;
+    const grad = ctx.createRadialGradient(b.x + 3, b.y + 4, 0, b.x + 3, b.y + 4, b.r * 1.2);
+    grad.addColorStop(0, `rgba(0,0,0,${shadowDepth * 0.3})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(b.x + 3, b.y + 4, b.r * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ── Pre-rendered blurred label bitmaps ──
+// Blur runs once when font loads, then we just drawImage each frame
+const labelCaches = [];
+function buildLabelCaches() {
+  labelCaches.length = 0;
+  for (const b of balls) {
+    const pad = 12;  // extra room for blur spread
+    const tempCtx = document.createElement('canvas').getContext('2d');
+    tempCtx.font = `${b.fontW} ${b.fSize}px ${FONT}`;
+    const m = tempCtx.measureText(b.label);
+    const tw = Math.ceil(m.width) + pad * 2;
+    const th = Math.ceil(b.fSize * 1.4) + pad * 2;
+    const ascent = m.actualBoundingBoxAscent || b.fSize * 0.4;
+    const descent = m.actualBoundingBoxDescent || b.fSize * 0.1;
+    const yOff = (ascent - descent) / 2;
+
+    const c = document.createElement('canvas');
+    c.width = tw * 2;  // 2x for sharpness
+    c.height = th * 2;
+    const lctx = c.getContext('2d');
+    lctx.scale(2, 2);
+    lctx.filter = 'blur(1.2px)';
+    lctx.font = `${b.fontW} ${b.fSize}px ${FONT}`;
+    lctx.textAlign = 'center';
+    lctx.fillStyle = 'rgb(26,28,34)';
+    lctx.fillText(b.label, tw / 2, th / 2 + yOff);
+
+    labelCaches.push({ canvas: c, w: tw, h: th });
+  }
+}
+// Build caches after font loads, with fallback
+document.fonts.ready.then(() => buildLabelCaches());
+buildLabelCaches();  // immediate fallback in case font is cached
+
+function drawLabels(drawOrder) {
+  for (const idx of drawOrder) {
+    const b = balls[idx];
+    const cache = labelCaches[idx];
+    if (!cache) continue;
+    const depthAlpha = 0.72 + 0.28 * Math.max(0, Math.min(1, (b.z + 110) / 220));
+    const baseAlpha = (0.85 + b.activated * 0.15) * depthAlpha;
+
+    ctx.save();
+    ctx.globalAlpha = baseAlpha;
+
+    if (b.label === '✦') {
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.spinAngle || 0);
+      ctx.drawImage(cache.canvas, -cache.w / 2, -cache.h / 2, cache.w, cache.h);
+    } else {
+      ctx.drawImage(cache.canvas, b.x - cache.w / 2, b.y - cache.h / 2, cache.w, cache.h);
+    }
+    ctx.restore();
+  }
+}
+
+// ── loop ──
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+  time += dt;
+
+  if (hintAlpha === -1) { hintEl.style.opacity = 0; hintAlpha = -2; }
+
+  // ── Orbit radius oscillation — layered sines, occasionally contracts tight ──
+  for (let i = 0; i < N; i++) {
+    const b = balls[i];
+    const osc1 = Math.sin(time * 0.18 + b.phaseOffset) * 15;           // gentle ripple
+    const osc2 = Math.sin(time * 0.065 + b.phaseOffset * 1.7) * 30;    // slow deep breath
+    const osc3 = Math.sin(time * 0.03 + b.phaseOffset * 0.6) * 18;     // very slow drift
+    b.orbitR = Math.max(18, b.baseOrbitR + osc1 + osc2 + osc3);
+  }
+
+  // ── Speed burst — every so often one ball accelerates ──
+  burstTimer -= dt;
+  if (burstTimer <= 0 && burstBall === -1) {
+    // pick a random ball to burst
+    burstBall = (Math.random() * N) | 0;
+    burstDuration = 1.2 + Math.random() * 1.5;  // burst lasts 1.2–2.7s
+    burstTimer = 0;
+  }
+  if (burstBall >= 0) {
+    burstDuration -= dt;
+    // smooth ease-in/out of burst via sin curve
+    const burstT = Math.sin(Math.max(0, 1 - burstDuration / 2.0) * Math.PI);
+    balls[burstBall].speed = balls[burstBall].baseSpeed * (1 + (BURST_MULT - 1) * burstT);
+    if (burstDuration <= 0) {
+      balls[burstBall].speed = balls[burstBall].baseSpeed;
+      burstBall = -1;
+      burstTimer = 4 + Math.random() * 8;  // 4–12s until next burst
+    }
+  }
+
+  // ── 3D orbit physics + inter-ball gravity ──
+  const GRAV = 2800;         // ambient gravitational constant
+  const MIN_DIST = 30;       // softening distance
+
+  // check if any ball is being dragged
+  let dragIdx = -1;
+  for (let i = 0; i < N; i++) if (balls[i].dragging) dragIdx = i;
+
+  for (let i = 0; i < N; i++) {
+    const b = balls[i];
+    b.angle += b.speed * dt;
+    b.activated *= Math.pow(0.02, dt);
+
+    if (b.dragging) {
+      b.x += (mouse.x - b.x) * 10 * dt;
+      b.y += (mouse.y - b.y) * 10 * dt;
+      b.z = 0;
+      b.angle = Math.atan2(-(b.y - origin.y) / sinTilt, b.x - origin.x);
+    } else {
+      // start from orbit target
+      const p = orbitPos(b.angle, b.orbitR);
+      let tx = origin.x + p.dx;
+      let ty = origin.y + p.dy;
+      b.z = p.z;
+
+      // ambient gravity from non-dragged balls (subtle, 1/d²)
+      for (let j = 0; j < N; j++) {
+        if (j === i || j === dragIdx) continue;
+        const other = balls[j];
+        const dx = other.x - b.x;
+        const dy = other.y - b.y;
+        const dist = Math.max(MIN_DIST, Math.hypot(dx, dy));
+        const force = GRAV / (dist * dist);
+        tx += (dx / dist) * force;
+        ty += (dy / dist) * force;
+      }
+
+      // gentle pull on nearest ball only toward dragged ball
+      if (dragIdx >= 0) {
+        // find which non-dragged ball is closest to the dragger
+        let closestDist = Infinity, closestIdx = -1;
+        for (let j = 0; j < N; j++) {
+          if (j === dragIdx || balls[j].dragging) continue;
+          const d = Math.hypot(balls[dragIdx].x - balls[j].x, balls[dragIdx].y - balls[j].y);
+          if (d < closestDist) { closestDist = d; closestIdx = j; }
+        }
+        if (i === closestIdx) {
+          const dragger = balls[dragIdx];
+          const dx = dragger.x - b.x;
+          const dy = dragger.y - b.y;
+          const dist = Math.hypot(dx, dy);
+          const pull = Math.min(0.2, 35 / (dist + 80));
+          tx = tx * (1 - pull) + dragger.x * pull;
+          ty = ty * (1 - pull) + dragger.y * pull;
+        }
+      }
+
+      b.x += (tx - b.x) * 6 * dt;
+      b.y += (ty - b.y) * 6 * dt;
+    }
+    b.r = b.baseR * (1 + b.z * DEPTH_SCALE);
+  }
+
+  // ── Sparkle spin — rotates faster the closer it is to other balls ──
+  const sparkle = balls[1];
+  let proximity = 0;
+  for (let j = 0; j < N; j++) {
+    if (j === 1) continue;
+    const d = Math.hypot(sparkle.x - balls[j].x, sparkle.y - balls[j].y);
+    // inverse distance, capped — closer = more spin contribution
+    proximity += Math.max(0, 1 - d / 160);  // fades to 0 beyond 160px
+  }
+  // spin speed ramps from 0 (far from all) to ~6 rad/s (merged with others)
+  sparkle.spinAngle += proximity * 2.2 * dt;
+
+  const drawOrder = balls.map((_, i) => i).sort((a, b) => balls[a].z - balls[b].z);
+
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+  drawGrid();
+  drawOriginMark();
+  drawShadows(drawOrder);
+  drawGlow();
+  renderMetaballs();
+  drawLabels(drawOrder);
+
+  requestAnimationFrame(loop);
+}
+
+// init
+resize();
+origin.x = W / 2;
+origin.y = H / 2;
+for (const b of balls) {
+  const p = orbitPos(b.angle, b.orbitR);
+  b.x = origin.x + p.dx;
+  b.y = origin.y + p.dy;
+  b.z = p.z;
+}
+requestAnimationFrame(loop);
+window.addEventListener('resize', () => { resize(); origin.x = W / 2; origin.y = H / 2; });
+</script>
+</body>
+</html>

@@ -3,9 +3,10 @@ import { COLORS, ensureFonts } from "./theme";
 import { getBootstrap } from "./lib/data.js";
 import { signOut } from "./lib/auth.js";
 import { isMockMode } from "./lib/supabase.js";
+import { SLOTS } from "./lib/lanes.js";
 import ReviewTray from "./ReviewTray.jsx";
 import ItemDetail from "./ItemDetail.jsx";
-import LaneFilter from "./components/LaneFilter.jsx";
+import OrbitDock from "./views/OrbitDock.jsx";
 import DatesView from "./views/DatesView.jsx";
 import CardsView from "./views/CardsView.jsx";
 import ListsView from "./views/ListsView.jsx";
@@ -70,13 +71,15 @@ export default function TwoDoShell() {
   const [editing, setEditing] = useState(null); // open ItemDetail when set
   const [laneFilter, setLaneFilter] = useState("all");
   const [navOpen, setNavOpen] = useState(false); // right nav drawer
+  const [captureOpen, setCaptureOpen] = useState(false); // Grown-Up capture sheet
   const prevTab = useRef(0);
   const menuBtnRef = useRef(null);
   const drawerRef = useRef(null);
   const wasNavOpen = useRef(false);
+  const captureInputRef = useRef(null);
 
-  const startNew = (type) => {
-    const tmpl = { type, lane: "shared", kind: "routine" };
+  const startNew = (type, laneSlot = SLOTS.SHARED) => {
+    const tmpl = { type, lane: laneSlot, kind: "routine" };
     if (type === "event") tmpl.start_at = new Date().toISOString();
     setEditing(tmpl);
   };
@@ -91,7 +94,16 @@ export default function TwoDoShell() {
     setTrayText(text);
     setTrayKey((k) => k + 1);
     setInputValue("");
+    setCaptureOpen(false);
   };
+
+  // Auto-focus the capture input when the Grown-Up sheet opens.
+  useEffect(() => {
+    if (captureOpen) {
+      const raf = requestAnimationFrame(() => captureInputRef.current?.focus());
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [captureOpen]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -232,122 +244,17 @@ export default function TwoDoShell() {
         </div>
       </div>
 
-      {/* FAB - Add button */}
-      <div className="twodo-fab" style={{ position: "absolute", right: 20, bottom: 82, zIndex: 5, animation: "twodoFloat 3.6s ease-in-out infinite" }}>
-        <button
-          onClick={() => startNew("task")}
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 24,
-            background: COLORS.accent,
-            border: "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 26,
-            fontWeight: 300,
-            color: COLORS.bg,
-            boxShadow: `0 4px 16px rgba(232,137,107,0.35)`,
-            transition: "transform 0.15s ease, box-shadow 0.15s ease",
-          }}
-        >
-          +
-        </button>
-      </div>
-
-      {/* Lane filter — applies to Dates / Cards / Lists. The bar carries its own
-          background + feather scrim (see LaneFilter), so the fade is global and
-          consistent across every view. */}
-      <LaneFilter value={laneFilter} onChange={setLaneFilter} ctx={ctx} />
-
-      {/* Bottom input bar */}
-      <div
-        style={{
-          padding: "10px 16px 14px",
-          borderTop: `1px solid ${COLORS.surfaceLight}`,
-          background: COLORS.bg,
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: COLORS.surface,
-            borderRadius: 24,
-            padding: "10px 14px",
-          }}
-        >
-          <button
-            style={{
-              background: "none",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: COLORS.textMuted,
-              padding: 0,
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-            title="Voice input"
-          >
-            🎙️
-          </button>
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submitDump()}
-            placeholder={PLACEHOLDERS[placeholderIdx]}
-            style={{
-              flex: 1,
-              background: "none",
-              border: "none",
-              outline: "none",
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 13,
-              color: COLORS.textPrimary,
-              caretColor: COLORS.accent,
-            }}
-          />
-          <button
-            onClick={submitDump}
-            style={{
-              background: inputValue ? COLORS.accent : COLORS.surfaceLight,
-              border: "none",
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: inputValue ? "pointer" : "default",
-              transition: "background 0.2s ease",
-              flexShrink: 0,
-              fontSize: 14,
-              color: inputValue ? COLORS.bg : COLORS.textMuted,
-            }}
-          >
-            ↑
-          </button>
-        </div>
-        <div
-          style={{
-            textAlign: "center",
-            marginTop: 6,
-            fontSize: 10,
-            fontFamily: "'Fraunces', serif",
-            fontStyle: "italic",
-            color: COLORS.textMuted,
-            letterSpacing: 0.3,
-          }}
-        >
-          The Grown-Up
-        </div>
-      </div>
+      {/* Metaball orbit dock — replaces the FAB, lane chips, and pinned input bar.
+          Tap an orb to create in a lane / open the Grown-Up; drag a lane orb out to
+          filter. Pinned bottom-right inside the stage at z7 (see z-order below). */}
+      <OrbitDock
+        ctx={ctx}
+        laneFilter={laneFilter}
+        onCreate={(laneSlot) => startNew("task", laneSlot)}
+        onGrownUp={() => setCaptureOpen(true)}
+        onFilter={setLaneFilter}
+        paused={navOpen || captureOpen}
+      />
       </div>
       {/* end stage */}
 
@@ -442,6 +349,72 @@ export default function TwoDoShell() {
           </button>
         )}
       </nav>
+
+      {/* Grown-Up capture sheet — summoned by the ✦ orb. Scrim z8 (above the
+          orbit dock at z7) + the sheet sliding up from the bottom. */}
+      {captureOpen && (
+        <div
+          onClick={() => setCaptureOpen(false)}
+          style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 8 }}
+        />
+      )}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 8,
+          transform: captureOpen ? "translateY(0)" : "translateY(110%)",
+          transition: "transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+          background: COLORS.bg,
+          borderTop: `1px solid ${COLORS.surfaceLight}`,
+          borderRadius: "18px 18px 0 0",
+          padding: "12px 16px calc(16px + env(safe-area-inset-bottom, 0px))",
+          boxShadow: "0 -10px 30px rgba(0,0,0,0.4)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: COLORS.surface,
+            borderRadius: 24,
+            padding: "10px 14px",
+          }}
+        >
+          <button
+            style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: COLORS.textMuted, padding: 0, lineHeight: 1, flexShrink: 0 }}
+            title="Voice input"
+          >
+            🎙️
+          </button>
+          <input
+            ref={captureInputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitDump();
+              if (e.key === "Escape") setCaptureOpen(false);
+            }}
+            placeholder={PLACEHOLDERS[placeholderIdx]}
+            style={{ flex: 1, background: "none", border: "none", outline: "none", fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: COLORS.textPrimary, caretColor: COLORS.accent }}
+          />
+          <button
+            onClick={submitDump}
+            style={{ background: inputValue ? COLORS.accent : COLORS.surfaceLight, border: "none", width: 30, height: 30, borderRadius: 15, display: "flex", alignItems: "center", justifyContent: "center", cursor: inputValue ? "pointer" : "default", transition: "background 0.2s ease", flexShrink: 0, fontSize: 14, color: inputValue ? COLORS.bg : COLORS.textMuted }}
+          >
+            ↑
+          </button>
+        </div>
+        <div
+          style={{ textAlign: "center", marginTop: 6, fontSize: 10, fontFamily: "'Fraunces', serif", fontStyle: "italic", color: COLORS.textMuted, letterSpacing: 0.3 }}
+        >
+          The Grown-Up
+        </div>
+      </div>
 
       {/* The Grown-Up review tray (top-level overlay, above the drawer) */}
       {trayText != null && (

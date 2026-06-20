@@ -324,7 +324,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
       <div style={{ padding: "0 8px" }}>
         {header}
         {monthFullHeader}
-        <div ref={monthScrollRef} className="no-sb" style={{ height: "calc(100dvh - 316px)", overflowY: "auto" }}>
+        <div ref={monthScrollRef} className="no-sb" style={{ height: "calc(100dvh - 180px)", overflowY: "auto" }}>
           {months.map((m) => (
             <MonthBlock
               key={monthId(m)}
@@ -347,7 +347,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     return (
       <div style={{ padding: "0 8px" }}>
         {header}
-        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 270px)" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 134px)" }}>
           {weekHeader}
           {dayStrip({ days: weekDays, onPick: (day) => setWeekStart(day), selected: (day) => sameDay(day, weekDays[0]) })}
           <DndContext sensors={weekSensors} autoScroll={{ threshold: { x: 0, y: 0.2 }, acceleration: 12 }} collisionDetection={closestCenter} onDragStart={(e) => { window.getSelection?.()?.removeAllRanges?.(); setWeekActiveId(e.active.id); }} onDragEnd={onWeekDragEnd} onDragCancel={() => setWeekActiveId(null)}>
@@ -387,7 +387,7 @@ const DatesView = ({ isDesktop, onOpenItem, laneFilter = "all", dataVersion = 0 
     return (
       <div style={{ padding: "0 8px" }}>
         {header}
-        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 270px)" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 134px)" }}>
           {fullHeader}
           {dayStrip({ days: dayWeekDays, onPick: (day) => setRef(day), selected: (day) => sameDay(day, ref) })}
           <DayTimeline day={ref} items={eventsOn(ref)} ctx={ctx} summaries={summaries} onOpenItem={openItem} onChange={persist}
