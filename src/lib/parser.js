@@ -42,15 +42,35 @@ export async function parseBrainDump(text, ctx = {}) {
 // ---------------------------------------------------------------------------
 // Remote backend — same contract for Claude (now) and the home-lab service.
 // ---------------------------------------------------------------------------
+const PARSE_TIMEOUT_MS = 12000;
+
 export async function remoteParse(text, ctx = {}) {
-  const res = await fetch(parserUrl(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, viewerSlot: ctx.viewerSlot || SLOTS.A }),
-  });
+  // Abort a hung backend so capture never freezes — the throw drops us to the
+  // stub via parseBrainDump's catch.
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), PARSE_TIMEOUT_MS) : null;
+  let res;
+  try {
+    res = await fetch(parserUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // now + tz let the backend resolve "saturday" -> a real ISO datetime.
+      body: JSON.stringify({ text, viewerSlot: ctx.viewerSlot || SLOTS.A, now: nowIso(), tz: localTz() }),
+      signal: ctrl ? ctrl.signal : undefined,
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`parser ${res.status}`);
   const data = await res.json();
   return (data.drafts || []).map(normalizeDraft).filter(Boolean);
+}
+
+function nowIso() {
+  try { return new Date().toISOString(); } catch { return null; }
+}
+function localTz() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; }
 }
 
 // Guard against a backend returning slightly-off shapes.

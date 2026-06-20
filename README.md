@@ -35,10 +35,10 @@ With those set, the app leaves mock mode and shows an **email + password sign-in
 The brain-dump parser is pluggable (`src/lib/parser.js`). Without a parser URL it uses a local heuristic **stub**; point it at a backend and it upgrades automatically — same contract for Claude now and a home-lab service later.
 
 1. Deploy the reference function: `supabase functions deploy parse --no-verify-jwt`
-2. Set the key: `supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` (optional `ANTHROPIC_MODEL`)
+2. Set the key: `supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` (optional `ANTHROPIC_MODEL`, default `claude-sonnet-4-6` — pull back to `claude-haiku-4-5` once tuned)
 3. In `.env.local`: `VITE_PARSER_URL=https://<project>.functions.supabase.co/parse`
 
-Contract (any backend can implement it): `POST { text, viewerSlot } → { drafts: [...] }`. See [`supabase/functions/parse/index.ts`](supabase/functions/parse/index.ts).
+The function calls Anthropic with **structured outputs**, so the reply is always schema-valid JSON (no prose salvage); the client adds a 12s timeout and falls back to the local stub on any failure. Contract (any backend can implement it): `POST { text, viewerSlot, now?, tz? } → { drafts: [...] }`. See [`supabase/functions/parse/index.ts`](supabase/functions/parse/index.ts) and the build plan in [`docs/plans/two-do-grown-up-claude-api.md`](docs/plans/two-do-grown-up-claude-api.md).
 
 ## Project layout
 

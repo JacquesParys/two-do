@@ -147,7 +147,7 @@ function DraftCard({ draft, ctx, onAccept, onDismiss }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: COLORS.bg, background: color, letterSpacing: 0.3 }}>{label}</span>
-          {draft.due_at && <span style={meta}>{draft.due_at}</span>}
+          {draft.due_at && <span style={meta}>{fmtDue(draft.due_at)}</span>}
           {draft.amount != null && <span style={meta}>${draft.amount}</span>}
           {draft.listName && <span style={meta}>{draft.listName}</span>}
           <div style={{ flex: 1 }} />
@@ -157,6 +157,17 @@ function DraftCard({ draft, ctx, onAccept, onDismiss }) {
       </div>
     </div>
   );
+}
+
+// The remote parser returns ISO-8601 due dates; the stub returns raw phrases
+// ("saturday"). Render an ISO value as a friendly date, anything else verbatim.
+function fmtDue(due) {
+  const d = new Date(due);
+  if (isNaN(d.getTime())) return due;
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const t = d.getHours() || d.getMinutes() ? ` ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}` : "";
+  return `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}${t}`;
 }
 
 const meta = { fontSize: 11, color: COLORS.textSecondary, fontFamily: "'DM Sans', sans-serif" };

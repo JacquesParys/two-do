@@ -8,6 +8,7 @@ const DUMP =
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("stubParse — segmentation", () => {
@@ -67,7 +68,10 @@ describe("remoteParse — contract", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe("http://test.local/parse");
-    expect(JSON.parse(opts.body)).toEqual({ text: "date night saturday", viewerSlot: SLOTS.A });
+    const sent = JSON.parse(opts.body);
+    expect(sent).toMatchObject({ text: "date night saturday", viewerSlot: SLOTS.A });
+    expect(sent).toHaveProperty("now"); // current time for relative-date resolution
+    expect(sent).toHaveProperty("tz");
     expect(out).toEqual([
       { type: "event", title: "Date night", lane: "shared", kind: "exciting", emoji: "💕", due_at: null, listName: null, amount: null, persistent: false },
     ]);
@@ -92,5 +96,18 @@ describe("parseBrainDump — backend selection", () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("network"); }));
     const out = await parseBrainDump("buy milk. date night saturday", { viewerSlot: SLOTS.A });
     expect(out.length).toBeGreaterThan(0); // came from the stub
+  });
+
+  it("times out a hung backend and falls back to the stub", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("VITE_PARSER_URL", "http://test.local/parse");
+    // A fetch that never resolves on its own — only rejects when aborted.
+    vi.stubGlobal("fetch", vi.fn((_url, opts) => new Promise((_resolve, reject) => {
+      opts?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    })));
+    const p = parseBrainDump("buy milk. date night saturday", { viewerSlot: SLOTS.A });
+    await vi.advanceTimersByTimeAsync(13000); // past the 12s timeout
+    const out = await p;
+    expect(out.length).toBeGreaterThan(0); // stub kicked in after the abort
   });
 });
