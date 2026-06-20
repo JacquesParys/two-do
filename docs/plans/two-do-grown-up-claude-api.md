@@ -2,7 +2,7 @@
 
 *Build plan for taking "The Grown-Up" brain-dump parser from a crude one-shot Claude call to a hardened, context-aware, clarifying capture pipeline. Phased: harden → context-aware → clarifying chat. Default model Sonnet 4.6 now, Haiku 4.5 once tuned.*
 
-> Status: **Phases 1–2 built** 2026-06-19; Phase 3 proposed. Approved direction (Jacques, 2026-06-19): "all of the above… small MCP server of functions perhaps?" + "start with Sonnet, pull back to Haiku when ready." The behavioural source of truth for the parser is `src/lib/parser.js` + `supabase/functions/parse/index.ts`.
+> Status: **Built** 2026-06-19 — all three phases shipped (mock-mode + tests; the live deploy step is unchanged, see §9). Approved direction (Jacques, 2026-06-19): "all of the above… small MCP server of functions perhaps?" + "start with Sonnet, pull back to Haiku when ready." The behavioural source of truth for the parser is `src/lib/parser.js` + `supabase/functions/parse/index.ts`.
 
 ---
 
@@ -92,7 +92,9 @@ Extend the contract additively: request gains `context: { now, tz, lists:[{name}
 
 ---
 
-## 6. Phase 3 — Clarifying chat + the capability module
+## 6. Phase 3 — Clarifying chat + the capability module — ✅ BUILT 2026-06-19
+
+> Shipped: schema gained `status` + `question`; the edge function accepts `history`, replays prior turns, and is told to ask ONE question only when genuinely stuck (else return drafts). `parser.js` now resolves a `ParseResult` `{ drafts, question, history }` from `parseBrainDump`/`remoteParse`/new `continueParse`; `stubResult` wraps the stub in the same shape. `ReviewTray` shows the question with an inline answer input (one round), then renders drafts. New `src/lib/grownup/capabilities.js` is the named, future-MCP-shaped surface (`findOrCreateList`, `listColumns`, `listStores`, `summarizeContext`) — ReviewTray now imports the Grown-Up helpers from it. Tests: clarify round-trip (question → continueParse replays history → drafts); result-shape updates. 56/56 green.
 
 **Discriminated-union response.** Schema gains `status: "drafts" | "needs_clarification"` and an optional `question` (§7). When the dump is genuinely ambiguous ("sort the thing for mum"), the model returns `needs_clarification` + one short question instead of guessing.
 

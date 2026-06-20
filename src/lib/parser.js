@@ -9,8 +9,14 @@
 //   - unset                → local heuristic stub (no AI), so the app still works.
 //
 // Remote contract:
-//   POST { text, viewerSlot, now?, tz?, context? }  →  { drafts: Draft[] }
+//   POST { text, viewerSlot, now?, tz?, context?, history? }
+//     →  { status: "drafts" | "needs_clarification", question: string|null, drafts: Draft[] }
 //   context = { lists:[{name}], columns:[{name,role}], stores:[name] } (optional)
+//   history = [{ role: "user"|"assistant", text }] (optional — for the clarify round)
+//
+// parseBrainDump / continueParse / remoteParse all resolve to a ParseResult:
+//   { drafts: Draft[], question: string|null, history: [{role,text}] }
+// question != null means the Grown-Up needs one answer before it can file.
 //   Draft = { type, title, lane, kind, emoji?, due_at?, listName?, amount?, persistent? }
 //   - type:  "task" | "event" | "shopping" | "expense"
 //   - lane:  "partner_a" | "partner_b" | "shared"   (NOT Me/You/Us)
@@ -34,10 +40,24 @@ export async function parseBrainDump(text, ctx = {}) {
       return await remoteParse(text, ctx);
     } catch (e) {
       if (typeof console !== "undefined") console.warn("[parser] remote failed, using stub:", e?.message || e);
-      return stubParse(text, ctx);
+      return stubResult(text, ctx);
     }
   }
-  return stubParse(text, ctx);
+  return stubResult(text, ctx);
+}
+
+// Continue after the Grown-Up asked a clarifying question: replay `history`
+// (the prior turns) plus the user's `answer`, and get drafts back.
+export async function continueParse({ history = [], answer, ctx = {} }) {
+  if (parserUrl()) {
+    try {
+      return await postParse({ text: answer, ctx, history });
+    } catch (e) {
+      if (typeof console !== "undefined") console.warn("[parser] remote failed, using stub:", e?.message || e);
+      return stubResult(answer, ctx);
+    }
+  }
+  return stubResult(answer, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -46,8 +66,12 @@ export async function parseBrainDump(text, ctx = {}) {
 const PARSE_TIMEOUT_MS = 12000;
 
 export async function remoteParse(text, ctx = {}) {
-  // Abort a hung backend so capture never freezes — the throw drops us to the
-  // stub via parseBrainDump's catch.
+  return postParse({ text, ctx, history: ctx.history || [] });
+}
+
+// The single POST + result-shaping path shared by first-pass and clarify rounds.
+async function postParse({ text, ctx = {}, history = [] }) {
+  // Abort a hung backend so capture never freezes — the throw drops us to the stub.
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), PARSE_TIMEOUT_MS) : null;
   let res;
@@ -56,13 +80,15 @@ export async function remoteParse(text, ctx = {}) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // now + tz let the backend resolve "saturday" -> a real ISO datetime;
-      // context (lists/columns/stores) lets it route into what already exists.
+      // context routes into existing lists/columns/stores; history carries the
+      // prior turns when answering a clarifying question.
       body: JSON.stringify({
         text,
         viewerSlot: ctx.viewerSlot || SLOTS.A,
         now: nowIso(),
         tz: localTz(),
         context: ctx.parserContext || undefined,
+        history: history.length ? history : undefined,
       }),
       signal: ctrl ? ctrl.signal : undefined,
     });
@@ -71,7 +97,16 @@ export async function remoteParse(text, ctx = {}) {
   }
   if (!res.ok) throw new Error(`parser ${res.status}`);
   const data = await res.json();
-  return (data.drafts || []).map(normalizeDraft).filter(Boolean);
+  const question = typeof data.question === "string" && data.question.trim() ? data.question : null;
+  const drafts = (data.drafts || []).map(normalizeDraft).filter(Boolean);
+  const nextHistory = [...history, { role: "user", text }];
+  if (question) nextHistory.push({ role: "assistant", text: question });
+  return { drafts, question, history: nextHistory };
+}
+
+// Wrap the no-AI stub in the ParseResult shape (it never asks a question).
+function stubResult(text, ctx = {}) {
+  return { drafts: stubParse(text, ctx), question: null, history: [] };
 }
 
 function nowIso() {

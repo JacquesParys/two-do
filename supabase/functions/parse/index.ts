@@ -29,8 +29,11 @@ const CORS = {
 const DRAFTS_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["drafts"],
+  required: ["status", "question", "drafts"],
   properties: {
+    // "drafts" with the items, or "needs_clarification" with one question + drafts:[].
+    status: { type: "string", enum: ["drafts", "needs_clarification"] },
+    question: { anyOf: [{ type: "string" }, { type: "null" }] },
     drafts: {
       type: "array",
       items: {
@@ -55,7 +58,12 @@ const DRAFTS_SCHEMA = {
 
 const SYSTEM = `You are "The Grown-Up", the parser inside a shared planning app for two partners with ADHD. You convert a messy spoken/typed brain-dump into discrete, structured draft items.
 
-You return ONLY the structured object {"drafts": Draft[]} (the response format is enforced). Each Draft:
+You return ONLY the structured object {"status", "question", "drafts"} (the response format is enforced).
+- Normally status="drafts", question=null, and drafts holds the items.
+- ONLY when the dump is genuinely ambiguous — you can't tell what an item is, who it's for, or which list — set status="needs_clarification", put ONE short, friendly question in question, and drafts=[]. Prefer a reasonable assumption over asking; ask only when truly stuck.
+- After the user answers a prior question (earlier turns are included), return status="drafts" with the items.
+
+Each Draft:
 - type: "task" | "event" | "shopping" | "expense"
 - title: string. Short, clean, imperative where natural. NEVER editorialise or add puns. Preserve the user's specifics (e.g. "wet food, chunky in gravy — not pâté").
 - lane: "partner_a" | "partner_b" | "shared"
@@ -88,6 +96,7 @@ Deno.serve(async (req: Request) => {
     now?: string;
     tz?: string;
     context?: { lists?: { name: string }[]; columns?: { name: string; role?: string }[]; stores?: string[] };
+    history?: { role?: string; text?: string }[];
   };
   try {
     body = await req.json();
@@ -95,13 +104,19 @@ Deno.serve(async (req: Request) => {
     return json({ error: "bad json" }, 400);
   }
   const text = (body.text || "").trim();
-  if (!text) return json({ drafts: [] });
+  if (!text) return json({ status: "drafts", question: null, drafts: [] });
 
   const viewerSlot = body.viewerSlot === "partner_b" ? "partner_b" : "partner_a";
   const now = body.now || new Date().toISOString();
   const tz = body.tz || "UTC";
 
   const userContent = `now=${now} tz=${tz}\nviewerSlot=${viewerSlot}${contextBlock(body.context)}\n\nDUMP:\n${text}`;
+
+  // Replay prior turns (clarify round) ahead of the latest user message.
+  const messages = (body.history || [])
+    .filter((h) => h && (h.role === "user" || h.role === "assistant") && typeof h.text === "string")
+    .map((h) => ({ role: h.role as "user" | "assistant", content: h.text as string }));
+  messages.push({ role: "user", content: userContent });
 
   let res: Response;
   try {
@@ -117,7 +132,7 @@ Deno.serve(async (req: Request) => {
         max_tokens: 2000,
         system: SYSTEM,
         output_config: { format: { type: "json_schema", schema: DRAFTS_SCHEMA } },
-        messages: [{ role: "user", content: userContent }],
+        messages,
       }),
     });
   } catch (e) {
@@ -131,8 +146,10 @@ Deno.serve(async (req: Request) => {
   // Structured outputs guarantees schema-valid JSON; parse directly (no salvage).
   try {
     const obj = JSON.parse(raw);
+    const status = obj?.status === "needs_clarification" ? "needs_clarification" : "drafts";
+    const question = typeof obj?.question === "string" ? obj.question : null;
     const drafts = Array.isArray(obj?.drafts) ? obj.drafts : [];
-    return json({ drafts });
+    return json({ status, question, drafts });
   } catch {
     return json({ error: "model returned non-JSON", detail: String(raw).slice(0, 500) }, 502);
   }

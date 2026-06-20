@@ -1,29 +1,56 @@
 import { useEffect, useState, useRef } from "react";
 import { COLORS, excitingStyle } from "./theme";
-import { parseBrainDump, TYPE_LABEL } from "./lib/parser.js";
+import { parseBrainDump, continueParse, TYPE_LABEL } from "./lib/parser.js";
 import { laneLabel, laneColor } from "./lib/lanes.js";
-import { createItem, getParserContext, findOrCreateList } from "./lib/data.js";
+import { createItem } from "./lib/data.js";
+import { summarizeContext, findOrCreateList } from "./lib/grownup/capabilities.js";
 
 // Full-screen confirm-before-file tray. Parses the dump, shows editable-ish
 // draft cards, and only writes what you accept.
 export default function ReviewTray({ text, ctx, onClose, onFiled }) {
-  const [drafts, setDrafts] = useState(null); // null = parsing
+  const [drafts, setDrafts] = useState(null); // null = working (parsing or answering)
   const [filedCount, setFiledCount] = useState(0);
+  const [question, setQuestion] = useState(null); // the Grown-Up needs one answer
+  const [answer, setAnswer] = useState("");
+  const histRef = useRef([]); // prior turns, for the clarify round
+  const pctxRef = useRef(undefined); // cached parser context, reused on continue
+
+  const showDrafts = (list) => setDrafts(list.map((x, i) => ({ ...x, _id: `d${i}`, status: "pending" })));
 
   useEffect(() => {
     let alive = true;
+    setDrafts(null);
+    setQuestion(null);
+    setAnswer("");
     (async () => {
       // Give the parser the space's lists/columns/stores so it routes into what
       // already exists. Best-effort — parse still runs if this fails.
       let parserContext;
-      try { parserContext = await getParserContext(); } catch { /* no-context */ }
-      const d = await parseBrainDump(text, { ...(ctx || {}), parserContext });
-      if (alive) setDrafts(d.map((x, i) => ({ ...x, _id: `d${i}`, status: "pending" })));
+      try { parserContext = await summarizeContext(); } catch { /* no-context */ }
+      pctxRef.current = parserContext;
+      const res = await parseBrainDump(text, { ...(ctx || {}), parserContext });
+      if (!alive) return;
+      if (res.question) {
+        histRef.current = res.history || [];
+        setQuestion(res.question); // ask before filing
+      } else {
+        showDrafts(res.drafts || []);
+      }
     })();
     return () => {
       alive = false;
     };
   }, [text]);
+
+  async function submitAnswer() {
+    const a = answer.trim();
+    if (!a) return;
+    setQuestion(null);
+    setDrafts(null); // back to "working"
+    const res = await continueParse({ history: histRef.current, answer: a, ctx: { ...(ctx || {}), parserContext: pctxRef.current } });
+    // One clarification round: take whatever drafts come back (even if it asks again).
+    showDrafts(res.drafts || []);
+  }
 
   const pending = (drafts || []).filter((d) => d.status === "pending");
 
@@ -77,7 +104,9 @@ export default function ReviewTray({ text, ctx, onClose, onFiled }) {
       {/* The Grown-Up's voice */}
       <div style={{ padding: "16px 20px 6px" }}>
         <p style={{ fontFamily: "'Fraunces', serif", fontSize: 15, fontStyle: "italic", color: COLORS.textSecondary, lineHeight: 1.4, margin: 0 }}>
-          {drafts == null
+          {question
+            ? "One thing before I file…"
+            : drafts == null
             ? "Right, let me look at this…"
             : allResolved
             ? filedCount > 0
@@ -87,9 +116,24 @@ export default function ReviewTray({ text, ctx, onClose, onFiled }) {
         </p>
       </div>
 
-      {/* Drafts */}
+      {/* Drafts (or one clarifying question) */}
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 16px 20px" }}>
-        {drafts == null ? null : pending.map((d) => (
+        {question ? (
+          <div style={{ background: COLORS.surface, borderRadius: 14, padding: "14px 16px", border: `1px solid ${COLORS.surfaceLight}` }}>
+            <p style={{ margin: "0 0 10px", fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: COLORS.textPrimary, lineHeight: 1.4 }}>{question}</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                autoFocus
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
+                placeholder="Tell me…"
+                style={{ flex: 1, background: COLORS.bg, border: `1px solid ${COLORS.surfaceLight}`, borderRadius: 10, padding: "8px 12px", color: COLORS.textPrimary, fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: "none", caretColor: COLORS.accent }}
+              />
+              <button onClick={submitAnswer} disabled={!answer.trim()} style={{ ...primaryBtn, padding: "8px 14px", opacity: answer.trim() ? 1 : 0.5 }}>Send</button>
+            </div>
+          </div>
+        ) : drafts == null ? null : pending.map((d) => (
           <DraftCard key={d._id} draft={d} ctx={ctx} onAccept={() => accept(d)} onDismiss={() => dismiss(d)} />
         ))}
 
